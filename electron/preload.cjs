@@ -23,4 +23,10 @@ contextBridge.exposeInMainWorld("aetherion", {
     setActive: (id) => ipcRenderer.invoke("accounts:setActive", id),
     getDataPath: () => ipcRenderer.invoke("accounts:getDataPath"),
   },
+  settings: {
+    get: () => ipcRenderer.invoke("settings:get"),
+    update: (patch) => ipcRenderer.invoke("settings:update", patch),
+    getPaths: () => ipcRenderer.invoke("settings:getPaths"),
+    openInstanceFolder: () => ipcRenderer.invoke("settings:openInstanceFolder"),
+  },
 })

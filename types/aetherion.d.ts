@@ -1,4 +1,4 @@
-import type { AccountsState, LaunchProgress } from "@/lib/launcher/types"
+import type { AccountsState, LauncherSettings, LaunchProgress } from "@/lib/launcher/types"
 
 export {}
 
@@ -17,6 +17,9 @@ declare global {
           fullscreen: boolean
           width: number
           height: number
+          autoConnectServer?: boolean
+          detachProcess?: boolean
+          closeOnLaunch?: boolean
         }) => Promise<{
           ok: boolean
           target?: {
@@ -34,6 +37,15 @@ declare global {
         remove: (id: string) => Promise<AccountsState>
         setActive: (id: string) => Promise<AccountsState>
         getDataPath: () => Promise<string>
+      }
+      settings: {
+        get: () => Promise<LauncherSettings>
+        update: (patch: Partial<LauncherSettings>) => Promise<LauncherSettings>
+        getPaths: () => Promise<{
+          settingsPath: string
+          instancePath: string
+        }>
+        openInstanceFolder: () => Promise<{ ok: boolean }>
       }
     }
   }

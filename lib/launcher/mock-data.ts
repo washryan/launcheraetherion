@@ -56,7 +56,7 @@ export const MOCK_DROPIN_MODS: DropinMod[] = [
 
 export const DEFAULT_SETTINGS: LauncherSettings = {
   minecraft: {
-    resolution: { width: 1920, height: 1080 },
+    resolution: { width: 1280, height: 720 },
     fullscreen: false,
     autoConnectServer: true,
     detachProcess: true,

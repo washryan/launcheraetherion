@@ -36,10 +36,33 @@ const DEFAULT_MANIFEST = {
   java: { recommendedMajor: 17, minMajor: 17 },
   protectedPatterns: ["mods/*-SERVER.jar", "config/custom-*.toml"],
 }
+const AETHERION_SERVER_HOST = "left-fcc.gl.joinmc.link"
+const DEFAULT_SETTINGS = {
+  minecraft: {
+    resolution: { width: 1280, height: 720 },
+    fullscreen: false,
+    autoConnectServer: true,
+    detachProcess: true,
+    closeOnLaunch: false,
+  },
+  java: {
+    minRamMb: 4096,
+    maxRamMb: 4096,
+    executablePath: "",
+    jvmArgs: "",
+    autoDownloadRuntime: true,
+  },
+  launcher: {
+    updateChannel: "stable",
+    minimizeToTray: false,
+    telemetry: false,
+  },
+}
 
 let mainWindow = null
 let activeLaunchAbort = null
 let activeMinecraftProcess = null
+let activeMinecraftDetached = true
 
 app.setName("Aetherion Launcher")
 
@@ -86,6 +109,12 @@ app.on("window-all-closed", () => {
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
+})
+
+app.on("before-quit", () => {
+  if (activeMinecraftProcess && !activeMinecraftDetached && !activeMinecraftProcess.killed) {
+    activeMinecraftProcess.kill()
+  }
 })
 
 ipcMain.on("window:minimize", () => mainWindow?.minimize())
@@ -136,6 +165,28 @@ ipcMain.handle("accounts:getDataPath", () => accountsPath())
 
 ipcMain.handle("accounts:addMicrosoft", () => {
   throw new Error("Login Microsoft ainda nao foi implementado neste build.")
+})
+
+ipcMain.handle("settings:get", () => readLauncherSettings())
+ipcMain.handle("settings:update", async (_event, patch) => {
+  const current = await readLauncherSettings()
+  const next = sanitizeLauncherSettings(deepMerge(current, patch || {}))
+  await writeLauncherSettings(next)
+  return next
+})
+ipcMain.handle("settings:getPaths", async () => {
+  const settings = await readLauncherSettings()
+  return {
+    settingsPath: settingsPath(),
+    instancePath: settings.minecraft.gameDirectory,
+  }
+})
+ipcMain.handle("settings:openInstanceFolder", async () => {
+  const settings = await readLauncherSettings()
+  await fs.mkdir(settings.minecraft.gameDirectory, { recursive: true })
+  const error = await shell.openPath(settings.minecraft.gameDirectory)
+  if (error) throw new Error(error)
+  return { ok: true }
 })
 
 ipcMain.handle("launch:start", async (_event, args) => {
@@ -257,7 +308,104 @@ function accountsPath() {
   return path.join(app.getPath("userData"), "accounts.json")
 }
 
+async function readLauncherSettings() {
+  try {
+    const raw = await fs.readFile(settingsPath(), "utf8")
+    return sanitizeLauncherSettings(JSON.parse(raw))
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      console.warn("[aetherion] failed to read launcher-settings.json", error)
+    }
+    const settings = sanitizeLauncherSettings(DEFAULT_SETTINGS)
+    await writeLauncherSettings(settings).catch(() => undefined)
+    return settings
+  }
+}
+
+async function writeLauncherSettings(settings) {
+  const filePath = settingsPath()
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  await fs.writeFile(filePath, `${JSON.stringify(sanitizeLauncherSettings(settings), null, 2)}\n`, "utf8")
+}
+
+function sanitizeLauncherSettings(value) {
+  const minecraft = value?.minecraft || {}
+  const java = value?.java || {}
+  const launcher = value?.launcher || {}
+  const width = clampNumber(minecraft.resolution?.width, 854, 7680, DEFAULT_SETTINGS.minecraft.resolution.width)
+  const height = clampNumber(
+    minecraft.resolution?.height,
+    480,
+    4320,
+    DEFAULT_SETTINGS.minecraft.resolution.height,
+  )
+  const closeOnLaunch = Boolean(minecraft.closeOnLaunch)
+  const instanceId = DEFAULT_MANIFEST.instanceId || "aetherion-main"
+
+  return {
+    minecraft: {
+      resolution: { width, height },
+      fullscreen: Boolean(minecraft.fullscreen),
+      autoConnectServer:
+        minecraft.autoConnectServer === undefined
+          ? DEFAULT_SETTINGS.minecraft.autoConnectServer
+          : Boolean(minecraft.autoConnectServer),
+      detachProcess: closeOnLaunch ? true : Boolean(minecraft.detachProcess),
+      closeOnLaunch,
+      gameDirectory:
+        typeof minecraft.gameDirectory === "string" && minecraft.gameDirectory.trim()
+          ? minecraft.gameDirectory
+          : instancePath(instanceId),
+    },
+    java: {
+      minRamMb: clampNumber(java.minRamMb, 512, 131072, DEFAULT_SETTINGS.java.minRamMb),
+      maxRamMb: clampNumber(java.maxRamMb, 512, 131072, DEFAULT_SETTINGS.java.maxRamMb),
+      executablePath: typeof java.executablePath === "string" ? java.executablePath : "",
+      jvmArgs: typeof java.jvmArgs === "string" ? java.jvmArgs : "",
+      autoDownloadRuntime:
+        java.autoDownloadRuntime === undefined
+          ? DEFAULT_SETTINGS.java.autoDownloadRuntime
+          : Boolean(java.autoDownloadRuntime),
+    },
+    launcher: {
+      updateChannel: "stable",
+      dataDirectory:
+        typeof launcher.dataDirectory === "string" && launcher.dataDirectory.trim()
+          ? launcher.dataDirectory
+          : app.getPath("userData"),
+      minimizeToTray: Boolean(launcher.minimizeToTray),
+      telemetry: Boolean(launcher.telemetry),
+    },
+  }
+}
+
+function settingsPath() {
+  return path.join(app.getPath("userData"), "launcher-settings.json")
+}
+
+function deepMerge(base, patch) {
+  if (!patch || typeof patch !== "object") return base
+  const output = Array.isArray(base) ? [...base] : { ...base }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      output[key] = deepMerge(output[key] || {}, value)
+    } else {
+      output[key] = value
+    }
+  }
+  return output
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return fallback
+  return Math.min(max, Math.max(min, Math.round(number)))
+}
+
 async function runUpdater(args, signal) {
+  const settings = await readLauncherSettings()
+  const launchArgs = normalizeLaunchArgs(args, settings)
+
   emitLaunchProgress({
     phase: "fetching-manifest",
     message: `Buscando manifest (${LAUNCH_TARGET.minecraft} + Forge ${LAUNCH_TARGET.forge})...`,
@@ -266,8 +414,8 @@ async function runUpdater(args, signal) {
   const manifest = await loadManifest(signal)
   validateManifest(manifest)
 
-  const instanceId = manifest.instanceId || args?.instanceId || "aetherion-main"
-  const root = instancePath(instanceId)
+  const instanceId = manifest.instanceId || launchArgs.instanceId || "aetherion-main"
+  const root = settings.minecraft.gameDirectory || instancePath(instanceId)
   await fs.mkdir(root, { recursive: true })
 
   emitLaunchProgress({
@@ -308,11 +456,11 @@ async function runUpdater(args, signal) {
   }
   await writeInstanceState(root, nextState)
 
-  const launchPlan = await buildMinecraftLaunchPlan(root, manifest, args, signal)
+  const launchPlan = await buildMinecraftLaunchPlan(root, manifest, launchArgs, signal)
   if (!launchPlan.ready) {
     await prepareMinecraftRuntime(root, launchPlan, signal)
   }
-  const finalLaunchPlan = await buildMinecraftLaunchPlan(root, manifest, args, signal)
+  const finalLaunchPlan = await buildMinecraftLaunchPlan(root, manifest, launchArgs, signal)
   if (!finalLaunchPlan.ready) {
     throw new Error(
       `Ainda faltam ${finalLaunchPlan.missing.length} arquivo(s) para iniciar. Primeiro: ${finalLaunchPlan.missing[0]}`,
@@ -329,11 +477,28 @@ async function runUpdater(args, signal) {
     filesTotal: plan.downloadCount,
   })
 
+  if (finalLaunchPlan.closeOnLaunch) {
+    setTimeout(() => app.quit(), 700)
+  }
+
   return {
     minecraft: manifest.minecraft,
     forge: manifest.forge.version,
     launchPlan: summarizeLaunchPlan(finalLaunchPlan),
     process: processInfo,
+  }
+}
+
+function normalizeLaunchArgs(args, settings) {
+  const minecraft = settings.minecraft
+  return {
+    ...args,
+    fullscreen: Boolean(minecraft.fullscreen),
+    width: minecraft.resolution.width,
+    height: minecraft.resolution.height,
+    autoConnectServer: Boolean(minecraft.autoConnectServer),
+    detachProcess: Boolean(minecraft.detachProcess),
+    closeOnLaunch: Boolean(minecraft.closeOnLaunch),
   }
 }
 
@@ -405,6 +570,7 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
     has_custom_resolution: true,
   })
   if (args?.fullscreen) gameArgs.push("--fullscreen")
+  if (args?.autoConnectServer) gameArgs.push("--server", AETHERION_SERVER_HOST)
   const commandArgs = [...jvmArgs, merged.mainClass, ...gameArgs]
   const assetIndexPath = path.join(assetsRoot, "indexes", `${variables.assets_index_name}.json`)
   const missing = [
@@ -429,6 +595,8 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
     libraryArtifacts: libraryPlan.artifacts,
     nativeArtifacts: libraryPlan.nativeArtifacts,
     nativesDirectory,
+    detachProcess: Boolean(args?.detachProcess),
+    closeOnLaunch: Boolean(args?.closeOnLaunch),
     jvmArgs,
     gameArgs,
     commandArgs,
@@ -466,6 +634,8 @@ function summarizeLaunchPlan(plan) {
     mainClass: plan.mainClass,
     classpathEntries: plan.classpathEntries.length,
     includeVanillaClientJar: plan.includeVanillaClientJar,
+    detachProcess: plan.detachProcess,
+    closeOnLaunch: plan.closeOnLaunch,
     libraryArtifacts: plan.libraryArtifacts.length,
     nativeArtifacts: plan.nativeArtifacts.length,
     jvmArgs: plan.jvmArgs.length,
@@ -503,6 +673,7 @@ async function startMinecraft(launchPlan, signal) {
 
   const child = spawn(launchPlan.javaPath, launchPlan.commandArgs, {
     cwd: launchPlan.root,
+    detached: launchPlan.detachProcess,
     windowsHide: false,
     shell: false,
     env: {
@@ -511,6 +682,7 @@ async function startMinecraft(launchPlan, signal) {
     },
   })
   activeMinecraftProcess = child
+  activeMinecraftDetached = Boolean(launchPlan.detachProcess)
 
   const writeLog = (chunk) => {
     const text = chunk.toString()
@@ -541,6 +713,7 @@ async function startMinecraft(launchPlan, signal) {
       fn(value)
     }
     const startedTimer = setTimeout(() => {
+      if (launchPlan.detachProcess) child.unref()
       settle(resolve, { pid: child.pid, logPath })
     }, 15000)
 

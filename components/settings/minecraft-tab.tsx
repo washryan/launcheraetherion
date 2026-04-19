@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { FolderOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,38 @@ import { DEFAULT_SETTINGS } from "@/lib/launcher/mock-data"
 
 export function MinecraftTab() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS.minecraft)
+  const [instancePath, setInstancePath] = useState(settings.gameDirectory ?? "")
+
+  useEffect(() => {
+    if (!window.aetherion?.settings) return
+
+    window.aetherion.settings
+      .get()
+      .then((state) => {
+        setSettings(state.minecraft)
+        setInstancePath(state.minecraft.gameDirectory ?? "")
+      })
+      .catch((err) => console.warn("[aetherion] failed to load minecraft settings", err))
+
+    window.aetherion.settings
+      .getPaths()
+      .then((paths) => setInstancePath(paths.instancePath))
+      .catch(() => undefined)
+  }, [])
+
+  function updateMinecraft(next: typeof settings | ((current: typeof settings) => typeof settings)) {
+    setSettings((current) => {
+      const resolved = typeof next === "function" ? next(current) : next
+      window.aetherion?.settings
+        .update({ minecraft: resolved })
+        .then((state) => {
+          setSettings(state.minecraft)
+          setInstancePath(state.minecraft.gameDirectory ?? instancePath)
+        })
+        .catch((err) => console.warn("[aetherion] failed to save minecraft settings", err))
+      return resolved
+    })
+  }
 
   return (
     <>
@@ -23,7 +55,7 @@ export function MinecraftTab() {
               type="number"
               value={settings.resolution.width}
               onChange={(e) =>
-                setSettings((s) => ({
+                updateMinecraft((s) => ({
                   ...s,
                   resolution: { ...s.resolution, width: Number(e.target.value) },
                 }))
@@ -35,7 +67,7 @@ export function MinecraftTab() {
               type="number"
               value={settings.resolution.height}
               onChange={(e) =>
-                setSettings((s) => ({
+                updateMinecraft((s) => ({
                   ...s,
                   resolution: { ...s.resolution, height: Number(e.target.value) },
                 }))
@@ -51,7 +83,7 @@ export function MinecraftTab() {
         >
           <Switch
             checked={settings.fullscreen}
-            onCheckedChange={(v) => setSettings((s) => ({ ...s, fullscreen: v }))}
+            onCheckedChange={(v) => updateMinecraft((s) => ({ ...s, fullscreen: v }))}
           />
         </SettingsRow>
       </SettingsSection>
@@ -66,7 +98,7 @@ export function MinecraftTab() {
         >
           <Switch
             checked={settings.autoConnectServer}
-            onCheckedChange={(v) => setSettings((s) => ({ ...s, autoConnectServer: v }))}
+            onCheckedChange={(v) => updateMinecraft((s) => ({ ...s, autoConnectServer: v }))}
           />
         </SettingsRow>
 
@@ -76,7 +108,13 @@ export function MinecraftTab() {
         >
           <Switch
             checked={settings.detachProcess}
-            onCheckedChange={(v) => setSettings((s) => ({ ...s, detachProcess: v }))}
+            onCheckedChange={(v) =>
+              updateMinecraft((s) => ({
+                ...s,
+                detachProcess: v,
+                closeOnLaunch: v ? s.closeOnLaunch : false,
+              }))
+            }
           />
         </SettingsRow>
 
@@ -86,7 +124,13 @@ export function MinecraftTab() {
         >
           <Switch
             checked={settings.closeOnLaunch}
-            onCheckedChange={(v) => setSettings((s) => ({ ...s, closeOnLaunch: v }))}
+            onCheckedChange={(v) =>
+              updateMinecraft((s) => ({
+                ...s,
+                closeOnLaunch: v,
+                detachProcess: v || s.detachProcess,
+              }))
+            }
           />
         </SettingsRow>
       </SettingsSection>
@@ -98,12 +142,25 @@ export function MinecraftTab() {
         <div className="flex items-center gap-2">
           <Input
             readOnly
-            value={settings.gameDirectory ?? "%APPDATA%\\.aetherion\\instances\\main"}
+            value={
+              instancePath ||
+              settings.gameDirectory ||
+              "%APPDATA%\\Aetherion Launcher\\instances\\aetherion-main"
+            }
             className="flex-1 h-9 bg-input/40 font-mono text-xs"
           />
-          <Button variant="outline" size="sm" className="h-9 gap-2 bg-transparent">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-2 bg-transparent"
+            onClick={() =>
+              window.aetherion?.settings
+                .openInstanceFolder()
+                .catch((err) => console.warn("[aetherion] failed to open instance", err))
+            }
+          >
             <FolderOpen className="size-4" />
-            Alterar
+            Abrir
           </Button>
         </div>
       </SettingsSection>

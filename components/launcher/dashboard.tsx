@@ -9,18 +9,20 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
   MOCK_ACCOUNTS,
+  DEFAULT_SETTINGS,
   MOCK_MANIFEST,
   MOCK_MOJANG_STATUS,
   MOCK_SERVER_STATUS,
 } from "@/lib/launcher/mock-data"
 import { simulateLaunch } from "@/lib/launcher/launch-simulator"
-import type { Account, LaunchProgress } from "@/lib/launcher/types"
+import type { Account, LauncherSettings, LaunchProgress } from "@/lib/launcher/types"
 import { publicAssetPath } from "@/lib/public-path"
 import { AetherionMark } from "./aetherion-mark"
 import { LaunchProgressOverlay } from "./launch-progress"
 
 export function Dashboard() {
   const [activeAccount, setActiveAccount] = useState<Account>(MOCK_ACCOUNTS[0])
+  const [settings, setSettings] = useState<LauncherSettings>(DEFAULT_SETTINGS)
   const [progress, setProgress] = useState<LaunchProgress | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -38,6 +40,15 @@ export function Dashboard() {
       .catch((err) => console.warn("[aetherion] failed to load account", err))
   }, [])
 
+  useEffect(() => {
+    if (!window.aetherion?.settings) return
+
+    window.aetherion.settings
+      .get()
+      .then(setSettings)
+      .catch((err) => console.warn("[aetherion] failed to load settings", err))
+  }, [])
+
   // Fase 5 (Electron): esse handler chama window.aetherion.launch({ ... })
   // e escuta os mesmos eventos `LaunchProgress`. Aqui usamos o simulador
   // que percorre TODAS as fases reais do pipeline.
@@ -53,13 +64,19 @@ export function Dashboard() {
           await window.aetherion.launch.start({
             accountId: activeAccount.id,
             instanceId: MOCK_MANIFEST.instanceId ?? "aetherion-main",
-            fullscreen: false,
-            width: 1280,
-            height: 720,
+            fullscreen: settings.minecraft.fullscreen,
+            width: settings.minecraft.resolution.width,
+            height: settings.minecraft.resolution.height,
+            autoConnectServer: settings.minecraft.autoConnectServer,
+            detachProcess: settings.minecraft.detachProcess,
+            closeOnLaunch: settings.minecraft.closeOnLaunch,
           })
         } finally {
           unsubscribe()
         }
+        setTimeout(() => {
+          setProgress((current) => (current?.phase === "running" ? null : current))
+        }, 1200)
         return
       }
 
