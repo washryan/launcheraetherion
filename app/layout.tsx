@@ -3,6 +3,8 @@ import { Inter, Cinzel } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || ""
+
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
@@ -21,7 +23,7 @@ export const metadata: Metadata = {
   description: "Launcher premium para Minecraft — gerenciador de contas, modpacks e runtime Java.",
   generator: "v0.app",
   icons: {
-    icon: "/icon.svg",
+    icon: `${basePath}/icon.svg`,
   },
 }
 

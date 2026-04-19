@@ -13,7 +13,7 @@ export default function ModsPage() {
           variant="outline"
           className="text-[10px] uppercase tracking-wider border-primary/40 text-primary"
         >
-          Manifest v{MOCK_MANIFEST_PREVIEW.manifestVersion}
+          Manifest v{MOCK_MANIFEST_PREVIEW.version}
         </Badge>
       }
     >

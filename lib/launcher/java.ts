@@ -1,27 +1,25 @@
 /**
- * Aetherion Launcher — Java Runtime (Fase 4)
+ * Aetherion Launcher — Java Runtime
  *
- * Regras de decisão puras. A execução real (spawn, fs.exists, tar xzf)
- * acontece no main process do Electron.
+ * Detecção + download automático via Adoptium (Eclipse Temurin).
+ * Adoptium é 100% gratuito, open-source e distribuído via GitHub Releases
+ * no próprio repositório deles (sem precisar de CDN pago).
  *
- * Estratégia:
- *   1) Listar Java candidates (main process → filesystem + PATH + JAVA_HOME)
- *   2) Rodar `java -version` em cada → extrair major version
- *   3) Esta lib escolhe o melhor match para o manifest
- *   4) Se nenhum serve, esta lib monta o plano de download
+ * Para Minecraft 1.19.2 + Forge 43.x, usamos Java 17 (recomendado pela Mojang).
+ * A função `adoptiumUrl` monta URLs estáveis da Adoptium API.
  */
 
-import type { JavaInstallation, JavaPlan, Manifest, PlatformKey } from "./types"
+import type {
+  JavaInstallation,
+  JavaPlan,
+  Manifest,
+  PlatformKey,
+} from "./types"
 
-/**
- * Escolhe a melhor instalação Java já presente no sistema.
- *
- * Preferência (em ordem):
- *   1) Major igual ao recomendado (17 para 1.19.2, 8 para 1.7.10)
- *   2) Major >= minMajor
- *   3) Arquitetura x64 antes de x86
- *   4) Vendor Temurin/Adoptium > Oracle > outros (estabilidade no MC)
- */
+/* -------------------------------------------------------------------------- */
+/*  Escolha da melhor instalação local                                         */
+/* -------------------------------------------------------------------------- */
+
 export function pickBestJava(
   installations: JavaInstallation[],
   manifest: Manifest,
@@ -32,20 +30,20 @@ export function pickBestJava(
   if (compatible.length === 0) return null
 
   return compatible.sort((a, b) => {
-    // 1) Match exato do recomendado vence
+    // 1) Match exato ganha
     const aExact = a.major === recommendedMajor ? 0 : 1
     const bExact = b.major === recommendedMajor ? 0 : 1
     if (aExact !== bExact) return aExact - bExact
 
-    // 2) Menor major acima do mínimo (mais próximo do target)
+    // 2) Mais próximo do recomendado
     const aDist = Math.abs(a.major - recommendedMajor)
     const bDist = Math.abs(b.major - recommendedMajor)
     if (aDist !== bDist) return aDist - bDist
 
-    // 3) 64 bits primeiro
+    // 3) 64-bit sempre ganha do 32-bit
     if (a.arch !== b.arch) return a.arch === "x64" ? -1 : 1
 
-    // 4) Vendor score
+    // 4) Vendor score (Temurin/Adoptium é o mais estável para Minecraft)
     return vendorScore(b.vendor) - vendorScore(a.vendor)
   })[0]
 }
@@ -53,37 +51,78 @@ export function pickBestJava(
 function vendorScore(vendor: string): number {
   const v = vendor.toLowerCase()
   if (v.includes("temurin") || v.includes("adoptium") || v.includes("eclipse")) return 3
-  if (v.includes("oracle")) return 2
-  if (v.includes("openjdk") || v.includes("zulu") || v.includes("corretto")) return 2
+  if (v.includes("corretto") || v.includes("zulu")) return 2
+  if (v.includes("openjdk") || v.includes("oracle")) return 2
   return 1
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Adoptium API (URLs públicas gratuitas)                                     */
+/* -------------------------------------------------------------------------- */
+
 /**
- * Se nenhuma Java local serve, retorna o plano para baixar a runtime
- * embutida do manifest. A plataforma é detectada pelo main process.
+ * Gera a URL do binário Adoptium mais recente (JRE).
+ *
+ * Exemplo resolvido automaticamente pela API:
+ *   https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jre/hotspot/normal/eclipse
+ *
+ * A API responde com 302 para o asset real no GitHub Releases — então funciona
+ * 100% gratuito, direto do repositório oficial da Eclipse Foundation.
+ */
+export function adoptiumUrl(major: number, platform: PlatformKey): string {
+  const [os, archRaw] = platform.split("-")
+  const arch = archRaw === "arm64" ? "aarch64" : archRaw // Adoptium usa "aarch64"
+  const osName = os === "macos" ? "mac" : os
+  return (
+    `https://api.adoptium.net/v3/binary/latest/${major}/ga/` +
+    `${osName}/${arch}/jre/hotspot/normal/eclipse`
+  )
+}
+
+export function adoptiumArchiveType(platform: PlatformKey): "zip" | "tar.gz" {
+  return platform.startsWith("windows") ? "zip" : "tar.gz"
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Plano de download                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Se o manifest especifica runtimes próprias, usa elas (mais confiável,
+ * porque o hash está fixo). Senão, cai para a Adoptium API.
  */
 export function planJavaDownload(
   manifest: Manifest,
   platform: PlatformKey,
 ): JavaPlan {
-  const runtime = manifest.java.runtimes[platform]
-  if (!runtime) {
+  const major = manifest.java.recommendedMajor
+  const runtime = manifest.java.runtimes?.[platform]
+
+  if (runtime) {
     return {
-      action: "error",
-      message: `Nenhuma runtime Java disponível para ${platform} neste manifest.`,
+      action: "download",
+      url: runtime.url,
+      sha256: runtime.sha256,
+      size: runtime.size,
+      archiveType: runtime.archiveType,
+      target: `runtime/java-${major}-${platform}`,
     }
   }
+
+  // Fallback Adoptium — sem hash conhecido a priori.
+  // O main process valida baixando o `.sha256.txt` adjacente da mesma API.
   return {
     action: "download",
-    url: runtime.url,
-    sha256: runtime.sha256,
-    size: runtime.size,
-    target: `runtimes/java-${manifest.java.recommendedMajor}-${platform}`,
+    url: adoptiumUrl(major, platform),
+    sha256: "", // a ser resolvido pelo main (fetch do .sha256.txt do Adoptium)
+    size: 0,
+    archiveType: adoptiumArchiveType(platform),
+    target: `runtime/java-${major}-${platform}`,
   }
 }
 
 /**
- * Decisão de alto nível: usar instalação local ou baixar.
+ * Decisão de alto nível.
  */
 export function resolveJava(
   installations: JavaInstallation[],
@@ -91,11 +130,6 @@ export function resolveJava(
   platform: PlatformKey,
 ): JavaPlan {
   const best = pickBestJava(installations, manifest)
-  if (best) {
-    return {
-      action: "use-local",
-      installation: best,
-    }
-  }
+  if (best) return { action: "use-local", installation: best }
   return planJavaDownload(manifest, platform)
 }

@@ -14,6 +14,7 @@ import {
   setActiveAccount,
   validateOfflineUsername,
 } from "@/lib/launcher/accounts"
+import { publicAssetPath } from "@/lib/public-path"
 import { cn } from "@/lib/utils"
 
 /**
@@ -183,7 +184,7 @@ export function AccountTab() {
                 >
                   <Avatar className="size-12 rounded-md ring-1 ring-border">
                     <AvatarImage
-                      src={acc.avatarUrl || "/placeholder.svg"}
+                      src={publicAssetPath(acc.avatarUrl || "/placeholder.svg")}
                       alt={acc.username}
                     />
                     <AvatarFallback className="rounded-md bg-muted text-primary">

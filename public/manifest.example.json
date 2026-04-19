@@ -1,104 +1,105 @@
 {
-  "$schema": "https://aetherion.gg/schema/manifest-v1.json",
-  "manifestVersion": "1.4.2",
-  "instanceId": "aetherion-main",
+  "$schema": "https://aetherion-network.github.io/aetherion-launcher-assets/manifest.schema.json",
+  "version": "0.3",
+  "minecraft": "1.19.2",
   "name": "Aetherion Main",
-  "description": "Modpack oficial do servidor Aetherion — build 1.4.2",
+  "instanceId": "aetherion-main",
   "publishedAt": "2026-04-14T12:00:00Z",
-
+  "changelog": "- Novo sistema de classes\n- Balanceamento de mobs\n- Bugfix em dungeons",
   "requiredLauncherVersion": "0.1.0",
 
-  "minecraft": {
-    "version": "1.19.2",
-    "loader": { "type": "forge", "version": "43.3.13" }
+  "forge": {
+    "version": "43.3.13",
+    "url": "https://github.com/aetherion-network/aetherion-launcher-assets/releases/download/v0.3/forge-1.19.2-43.3.13-installer.jar",
+    "sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "size": 5400000,
+    "installedProfile": "1.19.2-forge-43.3.13"
   },
 
-  "java": {
-    "recommendedMajor": 17,
-    "minMajor": 17,
-    "runtimes": {
-      "windows-x64": {
-        "url": "https://cdn.aetherion.gg/runtimes/temurin-17-win-x64.zip",
-        "sha256": "REPLACE_WITH_REAL_SHA256",
-        "size": 189456789
-      },
-      "linux-x64": {
-        "url": "https://cdn.aetherion.gg/runtimes/temurin-17-linux-x64.tar.gz",
-        "sha256": "REPLACE_WITH_REAL_SHA256",
-        "size": 178900000
-      },
-      "macos-arm64": {
-        "url": "https://cdn.aetherion.gg/runtimes/temurin-17-macos-arm64.tar.gz",
-        "sha256": "REPLACE_WITH_REAL_SHA256",
-        "size": 172000000
-      }
-    }
-  },
-
-  "categories": {
-    "required": [
-      {
-        "id": "aetherion-core",
-        "name": "Aetherion Core",
-        "version": "2.4.1",
-        "filename": "aetherion-core-2.4.1.jar",
-        "url": "https://cdn.aetherion.gg/mods/aetherion-core-2.4.1.jar",
-        "sha256": "REPLACE_WITH_REAL_SHA256",
-        "size": 4200000,
-        "tag": "Core",
-        "author": "Aetherion Team",
-        "locked": true
-      },
-      {
-        "id": "create",
-        "name": "Create",
-        "version": "0.5.1f",
-        "filename": "create-0.5.1f.jar",
-        "url": "https://cdn.aetherion.gg/mods/create-0.5.1f.jar",
-        "sha256": "REPLACE_WITH_REAL_SHA256",
-        "size": 15800000,
-        "tag": "Tech",
-        "author": "simibubi",
-        "locked": true
-      }
-    ],
-    "optional": [
-      {
-        "id": "journeymap",
-        "name": "JourneyMap",
-        "version": "5.9.7",
-        "filename": "journeymap-5.9.7.jar",
-        "url": "https://cdn.aetherion.gg/mods/journeymap-5.9.7.jar",
-        "sha256": "REPLACE_WITH_REAL_SHA256",
-        "size": 3400000,
-        "tag": "Map",
-        "author": "techbrew",
-        "defaultEnabled": true
-      }
-    ],
-    "dropin": {
-      "preserve": true,
-      "protectedPatterns": ["optifine*.jar", "xaeros*.jar", "shader*.jar"]
-    }
-  },
-
-  "configs": [
+  "files": [
     {
-      "path": "config/aetherion-core.toml",
-      "url": "https://cdn.aetherion.gg/configs/aetherion-core.toml",
-      "sha256": "REPLACE_WITH_REAL_SHA256",
-      "size": 2048
+      "path": "mods/aetherion-core-2.4.1.jar",
+      "url": "https://github.com/aetherion-network/aetherion-launcher-assets/releases/download/v0.3/aetherion-core-2.4.1.jar",
+      "sha256": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "size": 4200000,
+      "type": "required",
+      "id": "aetherion-core",
+      "name": "Aetherion Core",
+      "version": "2.4.1",
+      "author": "Aetherion Team",
+      "tag": "Core"
+    },
+    {
+      "path": "mods/create-0.5.1f.jar",
+      "url": "https://github.com/aetherion-network/aetherion-launcher-assets/releases/download/v0.3/create-0.5.1f.jar",
+      "sha256": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "size": 15800000,
+      "type": "required",
+      "id": "create",
+      "name": "Create",
+      "version": "0.5.1f",
+      "author": "simibubi",
+      "tag": "Tech"
+    },
+    {
+      "path": "mods/jei-11.6.0.jar",
+      "url": "https://github.com/aetherion-network/aetherion-launcher-assets/releases/download/v0.3/jei-11.6.0.jar",
+      "sha256": "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
+      "size": 2100000,
+      "type": "required",
+      "id": "jei",
+      "name": "Just Enough Items",
+      "version": "11.6.0",
+      "author": "mezz",
+      "tag": "Utility"
+    },
+    {
+      "path": "mods/journeymap-5.9.7.jar",
+      "url": "https://github.com/aetherion-network/aetherion-launcher-assets/releases/download/v0.3/journeymap-5.9.7.jar",
+      "sha256": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+      "size": 3400000,
+      "type": "optional",
+      "id": "journeymap",
+      "name": "JourneyMap",
+      "version": "5.9.7",
+      "author": "techbrew",
+      "tag": "Map",
+      "defaultEnabled": true
+    },
+    {
+      "path": "mods/soundphysics-1.1.6.jar",
+      "url": "https://github.com/aetherion-network/aetherion-launcher-assets/releases/download/v0.3/soundphysics-1.1.6.jar",
+      "sha256": "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2",
+      "size": 520000,
+      "type": "optional",
+      "id": "sound-physics",
+      "name": "Sound Physics Remastered",
+      "version": "1.1.6",
+      "author": "vlad2305m",
+      "tag": "Audio",
+      "defaultEnabled": false
+    },
+    {
+      "path": "config/aetherion-common.toml",
+      "url": "https://github.com/aetherion-network/aetherion-launcher-assets/releases/download/v0.3/aetherion-common.toml",
+      "sha256": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+      "size": 3200,
+      "type": "config"
     }
   ],
 
-  "resourcePacks": [],
-  "shaderpacks": [],
+  "java": {
+    "recommendedMajor": 17,
+    "minMajor": 17
+  },
 
   "endpoints": {
-    "serverStatus": "https://api.aetherion.gg/status",
-    "news": "https://aetherion.gg/news.json",
-    "site": "https://aetherion.gg",
+    "serverHost": "play.aetherion.gg",
+    "serverPort": 25565,
+    "site": "https://aetherion-network.github.io/aetherion-launcher-assets/",
     "discord": "https://discord.gg/aetherion",
     "youtube": "https://youtube.com/@aetherion"
-  }
+  },
+
+  "protectedPatterns": ["mods/*-SERVER.jar", "config/custom-*.toml"]
 }

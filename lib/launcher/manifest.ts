@@ -1,51 +1,66 @@
 /**
- * Aetherion Launcher — Manifest & Updater (Fase 3)
+ * Aetherion Launcher — Manifest & Updater
  *
- * Biblioteca pura de domínio. A implementação de download e hashing
- * é injetada pelo main process (Node) — aqui ficam as regras de negócio:
- *   - fetch do manifest remoto
- *   - comparação com o estado local da instância
- *   - plano de ações (baixar, remover, manter, pular)
+ * Biblioteca pura: recebe o manifest remoto + estado local + hashes em disco
+ * e produz um `UpdatePlan` com a lista de ações (download / skip / remove).
  *
- * O plano gerado por `computeUpdatePlan` é passado para um executor
- * concorrente no main (p-limit + sha256 streaming).
+ * Arquitetura GitHub Releases:
+ *   - manifest.json é fetched via HTTPS público (GitHub Pages ou raw GitHub)
+ *   - cada `file.url` aponta para um asset de release
+ *   - comparação por SHA-256 garante idempotência (só baixa o que mudou)
  */
 
 import type {
   LocalInstanceState,
   Manifest,
-  ModEntry,
+  ManifestFile,
   UpdateAction,
   UpdatePlan,
 } from "./types"
 
 /* -------------------------------------------------------------------------- */
-/*  Fetch & validação                                                         */
+/*  Fetch                                                                      */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Busca o manifest remoto com cache-busting por query string.
- * Lança se o status não for 200 ou se o JSON não tiver os campos mínimos.
+ * Busca o manifest remoto. Cache-bust via query string para garantir que
+ * o GitHub Pages / CDN entregue a versão mais nova.
  */
-export async function fetchManifest(url: string, signal?: AbortSignal): Promise<Manifest> {
+export async function fetchManifest(
+  url: string,
+  signal?: AbortSignal,
+): Promise<Manifest> {
   const cacheBust = `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`
   const res = await fetch(cacheBust, {
     signal,
     headers: { Accept: "application/json" },
+    redirect: "follow",
   })
-  if (!res.ok)
+  if (!res.ok) {
     throw new Error(`Falha ao buscar manifest (${res.status} ${res.statusText})`)
+  }
 
   const json = (await res.json()) as Manifest
-  if (!json.manifestVersion || !json.minecraft?.version)
-    throw new Error("Manifest inválido: campos obrigatórios ausentes.")
-
+  validateManifest(json)
   return json
 }
 
-/**
- * Valida que o launcher atual suporta a versão do manifest.
- */
+export function validateManifest(m: Manifest): void {
+  if (!m.version) throw new Error("Manifest inválido: campo 'version' ausente.")
+  if (!m.minecraft) throw new Error("Manifest inválido: campo 'minecraft' ausente.")
+  if (!m.forge?.url || !m.forge?.sha256) {
+    throw new Error("Manifest inválido: bloco 'forge' incompleto.")
+  }
+  if (!Array.isArray(m.files)) {
+    throw new Error("Manifest inválido: 'files' deve ser um array.")
+  }
+  for (const f of m.files) {
+    if (!f.path || !f.url || !f.sha256 || typeof f.size !== "number") {
+      throw new Error(`Manifest inválido: file '${f.path}' com campos ausentes.`)
+    }
+  }
+}
+
 export function isLauncherCompatible(
   manifest: Manifest,
   launcherVersion: string,
@@ -55,7 +70,7 @@ export function isLauncherCompatible(
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Cálculo do plano de atualização                                           */
+/*  Update plan                                                                */
 /* -------------------------------------------------------------------------- */
 
 export interface ComputePlanInput {
@@ -63,8 +78,8 @@ export interface ComputePlanInput {
   /** Estado local persistido em instance-state.json */
   local: LocalInstanceState
   /**
-   * Mapa filename → sha256 dos arquivos realmente presentes em disco.
-   * O main process escaneia a pasta `mods/` e passa o resultado.
+   * Mapa path → sha256 dos arquivos presentes no disco (mods/, config/...).
+   * O main process escaneia e passa esse mapa.
    */
   installedHashes: Record<string, string>
 }
@@ -73,101 +88,109 @@ export function computeUpdatePlan(input: ComputePlanInput): UpdatePlan {
   const { manifest, local, installedHashes } = input
   const actions: UpdateAction[] = []
 
-  // 1) Mods obrigatórios — sempre presentes no hash certo
-  for (const mod of manifest.categories.required) {
-    actions.push(resolveFileAction(mod, installedHashes, "required"))
-  }
+  // ---- 1) Forge ---------------------------------------------------------
+  const needsForgeInstall =
+    local.installedForgeSha?.toLowerCase() !== manifest.forge.sha256.toLowerCase()
 
-  // 2) Mods opcionais — respeita a seleção do usuário
-  for (const mod of manifest.categories.optional) {
-    const enabled =
-      local.enabledOptionalMods[mod.id] ??
-      mod.defaultEnabled ??
-      false
-
-    if (enabled) {
-      actions.push(resolveFileAction(mod, installedHashes, "optional"))
-    } else if (installedHashes[mod.filename]) {
-      actions.push({
-        kind: "remove",
-        filename: mod.filename,
-        reason: "optional-disabled",
-      })
-    }
-  }
-
-  // 3) Configs
-  for (const cfg of manifest.configs ?? []) {
-    const current = installedHashes[cfg.path]
-    if (current === cfg.sha256) {
-      actions.push({ kind: "skip", filename: cfg.path, reason: "hash-match" })
+  if (needsForgeInstall) {
+    const forgePath = `forge/forge-${manifest.forge.version}-installer.jar`
+    if (installedHashes[forgePath] === manifest.forge.sha256.toLowerCase()) {
+      actions.push({ kind: "skip", path: forgePath, reason: "hash-match" })
     } else {
       actions.push({
         kind: "download",
-        filename: cfg.path,
-        url: cfg.url,
-        sha256: cfg.sha256,
-        size: cfg.size,
-        category: "config",
+        path: forgePath,
+        url: manifest.forge.url,
+        sha256: manifest.forge.sha256,
+        size: manifest.forge.size ?? 0,
+        category: "forge",
       })
     }
   }
 
-  // 4) Limpeza de mods órfãos (que estavam no manifest antigo e sumiram)
-  const validFilenames = new Set<string>([
-    ...manifest.categories.required.map((m) => m.filename),
-    ...manifest.categories.optional.map((m) => m.filename),
-    ...(manifest.configs ?? []).map((c) => c.path),
-  ])
-  const protectedPatterns = manifest.categories.dropin?.protectedPatterns ?? []
+  // ---- 2) Files ---------------------------------------------------------
+  const validPaths = new Set<string>()
 
-  for (const filename of Object.keys(installedHashes)) {
-    if (validFilenames.has(filename)) continue
-    if (isProtected(filename, protectedPatterns)) continue
-    // Se o usuário tinha marcado como drop-in manual, preserva.
-    if (local.dropinMods.some((m) => m.filename === filename)) continue
+  for (const file of manifest.files) {
+    validPaths.add(file.path)
 
-    actions.push({
-      kind: "remove",
-      filename,
-      reason: "orphan",
-    })
+    // Mods opcionais respeitam a preferência do usuário
+    if (file.type === "optional") {
+      const enabled = resolveOptionalEnabled(file, local)
+      if (!enabled) {
+        if (installedHashes[file.path]) {
+          actions.push({
+            kind: "remove",
+            path: file.path,
+            reason: "optional-disabled",
+          })
+        }
+        continue
+      }
+    }
+
+    actions.push(resolveFileAction(file, installedHashes))
   }
 
-  const totalBytes = actions
-    .filter((a): a is Extract<UpdateAction, { kind: "download" }> => a.kind === "download")
-    .reduce((sum, a) => sum + (a.size ?? 0), 0)
+  // ---- 3) Órfãos (arquivos que saíram do manifest) ----------------------
+  const protectedPatterns = manifest.protectedPatterns ?? []
+  const dropinSet = new Set(local.dropinMods.map((m) => `mods/${m.filename}`))
+
+  for (const path of Object.keys(installedHashes)) {
+    if (validPaths.has(path)) continue
+    if (path.startsWith("forge/")) continue // protege installer já usado
+    if (dropinSet.has(path)) continue
+    if (isProtected(path, protectedPatterns)) continue
+
+    actions.push({ kind: "remove", path, reason: "orphan" })
+  }
+
+  // ---- 4) Agregados -----------------------------------------------------
+  const downloadActions = actions.filter(
+    (a): a is Extract<UpdateAction, { kind: "download" }> => a.kind === "download",
+  )
+  const totalBytes = downloadActions.reduce((sum, a) => sum + a.size, 0)
 
   return {
-    manifestVersion: manifest.manifestVersion,
+    manifestVersion: manifest.version,
+    fromVersion: local.installedManifestVersion,
     actions,
     totalBytes,
-    downloadCount: actions.filter((a) => a.kind === "download").length,
+    downloadCount: downloadActions.length,
     removeCount: actions.filter((a) => a.kind === "remove").length,
+    needsForgeInstall,
   }
+}
+
+function resolveOptionalEnabled(
+  file: ManifestFile,
+  local: LocalInstanceState,
+): boolean {
+  const userPref = local.enabledOptionalMods[file.path]
+  if (userPref !== undefined) return userPref
+  return file.defaultEnabled ?? false
 }
 
 function resolveFileAction(
-  file: ModEntry,
+  file: ManifestFile,
   installed: Record<string, string>,
-  category: "required" | "optional" | "config",
 ): UpdateAction {
-  const current = installed[file.filename]
-  if (current === file.sha256) {
-    return { kind: "skip", filename: file.filename, reason: "hash-match" }
+  const current = installed[file.path]
+  if (current && current.toLowerCase() === file.sha256.toLowerCase()) {
+    return { kind: "skip", path: file.path, reason: "hash-match" }
   }
   return {
     kind: "download",
-    filename: file.filename,
+    path: file.path,
     url: file.url,
     sha256: file.sha256,
     size: file.size,
-    category,
+    category: file.type,
   }
 }
 
-function isProtected(filename: string, patterns: string[]): boolean {
-  return patterns.some((p) => globToRegex(p).test(filename))
+function isProtected(path: string, patterns: string[]): boolean {
+  return patterns.some((p) => globToRegex(p).test(path))
 }
 
 function globToRegex(glob: string): RegExp {
@@ -176,15 +199,26 @@ function globToRegex(glob: string): RegExp {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Semver leve (major.minor.patch)                                           */
+/*  Semver simples                                                             */
 /* -------------------------------------------------------------------------- */
 
-function semverGte(a: string, b: string): boolean {
+/** Compara "0.3" >= "0.2" etc. Aceita "v" prefixado e qualquer nº de partes. */
+export function semverGte(a: string, b: string): boolean {
   const parse = (v: string) =>
     v.replace(/^v/, "").split(".").map((n) => parseInt(n, 10) || 0)
-  const [a1, a2, a3] = parse(a)
-  const [b1, b2, b3] = parse(b)
-  if (a1 !== b1) return a1 > b1
-  if (a2 !== b2) return a2 > b2
-  return a3 >= b3
+  const pa = parse(a)
+  const pb = parse(b)
+  const len = Math.max(pa.length, pb.length)
+  for (let i = 0; i < len; i++) {
+    const av = pa[i] ?? 0
+    const bv = pb[i] ?? 0
+    if (av !== bv) return av > bv
+  }
+  return true
+}
+
+/** Retorna true se a versão local está atrás da remota. */
+export function needsUpdate(local: LocalInstanceState, remote: Manifest): boolean {
+  if (!local.installedManifestVersion) return true
+  return !semverGte(local.installedManifestVersion, remote.version)
 }

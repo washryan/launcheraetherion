@@ -18,7 +18,7 @@ import {
   OPTIONAL_MODS,
   REQUIRED_MODS,
 } from "@/lib/launcher/mock-data"
-import type { DropinMod, ModEntry } from "@/lib/launcher/types"
+import type { DropinMod, ManifestFile } from "@/lib/launcher/types"
 import { cn } from "@/lib/utils"
 
 function formatSize(bytes: number) {
@@ -29,7 +29,7 @@ function formatSize(bytes: number) {
 
 export function ModsTab() {
   const [optional, setOptional] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(OPTIONAL_MODS.map((m) => [m.id, m.defaultEnabled ?? false])),
+    Object.fromEntries(OPTIONAL_MODS.map((m) => [m.path, m.defaultEnabled ?? false])),
   )
   const [dropins, setDropins] = useState<DropinMod[]>(MOCK_DROPIN_MODS)
 
@@ -41,7 +41,7 @@ export function ModsTab() {
       >
         <div className="rounded-lg border border-border/50 divide-y divide-border/40">
           {REQUIRED_MODS.map((mod) => (
-            <ModRow key={mod.id} mod={mod} locked />
+            <ModRow key={mod.path} mod={mod} locked />
           ))}
         </div>
       </SettingsSection>
@@ -53,10 +53,10 @@ export function ModsTab() {
         <div className="rounded-lg border border-border/50 divide-y divide-border/40">
           {OPTIONAL_MODS.map((mod) => (
             <ModRow
-              key={mod.id}
+              key={mod.path}
               mod={mod}
-              enabled={optional[mod.id]}
-              onToggle={(v) => setOptional((prev) => ({ ...prev, [mod.id]: v }))}
+              enabled={optional[mod.path]}
+              onToggle={(v) => setOptional((prev) => ({ ...prev, [mod.path]: v }))}
             />
           ))}
         </div>
@@ -150,11 +150,13 @@ function ModRow({
   enabled,
   onToggle,
 }: {
-  mod: ModEntry
+  mod: ManifestFile
   locked?: boolean
   enabled?: boolean
   onToggle?: (v: boolean) => void
 }) {
+  const displayName = mod.name ?? mod.path.split("/").pop() ?? mod.path
+
   return (
     <div className="flex items-center gap-4 px-4 py-3">
       <div
@@ -165,7 +167,7 @@ function ModRow({
       />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-medium text-foreground truncate">{mod.name}</p>
+          <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
           {mod.tag && (
             <Badge
               variant="outline"
@@ -176,8 +178,9 @@ function ModRow({
           )}
         </div>
         <p className="text-[11px] text-muted-foreground">
-          v{mod.version}
-          {mod.author && ` • ${mod.author}`}
+          {mod.version && `v${mod.version}`}
+          {mod.version && mod.author && " • "}
+          {mod.author}
         </p>
       </div>
       {locked ? (

@@ -1,49 +1,70 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { ChevronRight, Cog, Disc, Globe, LogIn, Play, Youtube } from "lucide-react"
+import { Cog, Disc, Globe, LogIn, Play, Youtube } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { MOCK_ACCOUNTS, MOCK_MOJANG_STATUS, MOCK_SERVER_STATUS } from "@/lib/launcher/mock-data"
+import {
+  MOCK_ACCOUNTS,
+  MOCK_MANIFEST,
+  MOCK_MOJANG_STATUS,
+  MOCK_SERVER_STATUS,
+} from "@/lib/launcher/mock-data"
+import { simulateLaunch } from "@/lib/launcher/launch-simulator"
+import type { LaunchProgress } from "@/lib/launcher/types"
+import { publicAssetPath } from "@/lib/public-path"
 import { AetherionMark } from "./aetherion-mark"
+import { LaunchProgressOverlay } from "./launch-progress"
 
 export function Dashboard() {
   const activeAccount = MOCK_ACCOUNTS[0]
-  const [isLaunching, setIsLaunching] = useState(false)
+  const [progress, setProgress] = useState<LaunchProgress | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
-  // Fase 5: esse handler dispara o orquestrador nativo:
-  //   1. Verifica manifest remoto → compara com estado local
-  //   2. Baixa mods/configs faltantes com validação sha256
-  //   3. Detecta/baixa Java 17 (Adoptium)
-  //   4. Monta classpath com Forge e lança javaw.exe
+  // Fase 5 (Electron): esse handler chama window.aetherion.launch({ ... })
+  // e escuta os mesmos eventos `LaunchProgress`. Aqui usamos o simulador
+  // que percorre TODAS as fases reais do pipeline.
   async function handleLaunch() {
-    setIsLaunching(true)
-    // await window.aetherion.launch({ instanceId: 'aetherion-main', accountId: activeAccount.id })
-    setTimeout(() => setIsLaunching(false), 2200)
+    const controller = new AbortController()
+    abortRef.current = controller
+    setProgress({ phase: "fetching-manifest", message: "Iniciando..." })
+
+    try {
+      await simulateLaunch({
+        signal: controller.signal,
+        onProgress: (p) => setProgress(p),
+      })
+    } catch (err) {
+      if (controller.signal.aborted) {
+        setProgress(null)
+        return
+      }
+      setProgress({
+        phase: "error",
+        message: "Falha na preparação",
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  function cancel() {
+    abortRef.current?.abort()
   }
 
   return (
     <div className="relative h-full w-full overflow-hidden">
       {/* Arte de fundo */}
       <div className="absolute inset-0">
-        <Image
-          src="/aetherion-bg.jpg"
-          alt=""
-          fill
-          priority
-          className="object-cover"
-        />
-        {/* Overlay escuro para legibilidade */}
+        <Image src={publicAssetPath("/aetherion-bg.jpg")} alt="" fill priority className="object-cover" />
         <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/40 to-background/95" />
         <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-transparent to-background/80" />
       </div>
 
       {/* Conteúdo */}
       <div className="relative h-full flex flex-col">
-        {/* Topo */}
         <div className="flex items-start justify-between p-8">
           <div className="flex items-center gap-3">
             <AetherionMark size={48} />
@@ -62,7 +83,6 @@ export function Dashboard() {
           />
         </div>
 
-        {/* Centro — vazio para deixar a arte respirar */}
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <p className="font-serif text-6xl tracking-[0.15em] text-foreground/90 drop-shadow-2xl">
@@ -74,10 +94,8 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Rodapé — status + botão jogar */}
         <footer className="border-t border-border/50 bg-background/60 backdrop-blur-xl">
           <div className="grid grid-cols-12 gap-6 items-center px-8 py-5">
-            {/* Esquerda: status */}
             <div className="col-span-5 flex items-center gap-8">
               <StatusBlock
                 label="Jogadores"
@@ -98,7 +116,6 @@ export function Dashboard() {
               />
             </div>
 
-            {/* Centro: atalhos */}
             <div className="col-span-3 flex items-center justify-center gap-2">
               <IconLink href="/settings/account" label="Configurações">
                 <Cog className="size-4" />
@@ -114,44 +131,46 @@ export function Dashboard() {
               </IconLink>
             </div>
 
-            {/* Direita: botão jogar */}
             <div className="col-span-4 flex items-center justify-end gap-4">
               <div className="text-right">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
                   Instância
                 </p>
                 <p className="text-sm font-medium text-foreground">
-                  Aetherion Main{" "}
-                  <span className="text-muted-foreground font-normal">• 1.19.2</span>
+                  {MOCK_MANIFEST.name}{" "}
+                  <span className="text-muted-foreground font-normal">
+                    • {MOCK_MANIFEST.minecraft} • v{MOCK_MANIFEST.version}
+                  </span>
                 </p>
               </div>
 
               <Button
                 size="lg"
                 onClick={handleLaunch}
-                disabled={isLaunching}
+                disabled={progress !== null && progress.phase !== "error" && progress.phase !== "running"}
                 className={cn(
                   "h-14 px-8 rounded-md font-serif text-lg tracking-[0.25em]",
                   "bg-primary text-primary-foreground hover:bg-primary/90",
                   "aetherion-gold-glow",
                 )}
               >
-                {isLaunching ? (
-                  <span className="inline-flex items-center gap-3">
-                    <span className="size-2 rounded-full bg-primary-foreground animate-pulse" />
-                    PREPARANDO
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-3">
-                    <Play className="size-4 fill-primary-foreground" />
-                    JOGAR
-                  </span>
-                )}
+                <span className="inline-flex items-center gap-3">
+                  <Play className="size-4 fill-primary-foreground" />
+                  JOGAR
+                </span>
               </Button>
             </div>
           </div>
         </footer>
       </div>
+
+      {progress && (
+        <LaunchProgressOverlay
+          progress={progress}
+          onCancel={cancel}
+          onDismiss={() => setProgress(null)}
+        />
+      )}
     </div>
   )
 }
@@ -214,7 +233,7 @@ function AccountBadge({
         </p>
       </div>
       <Avatar className="size-10 rounded-md ring-1 ring-primary/30">
-        <AvatarImage src={avatarUrl || "/placeholder.svg"} alt={username} />
+        <AvatarImage src={publicAssetPath(avatarUrl || "/placeholder.svg")} alt={username} />
         <AvatarFallback className="rounded-md bg-muted text-primary">
           {username.slice(0, 2).toUpperCase()}
         </AvatarFallback>

@@ -69,8 +69,8 @@ export function JavaTab() {
                 <span className="text-muted-foreground font-normal">(Temurin)</span>
               </p>
               <p className="text-xs text-muted-foreground">
-                Recomendado para Minecraft {MOCK_MANIFEST_PREVIEW.minecraft.version} — major ≥{" "}
-                {MOCK_MANIFEST_PREVIEW.java.recommendedMajor}
+                Recomendado para Minecraft {MOCK_MANIFEST_PREVIEW.minecraft} (Forge{" "}
+                {MOCK_MANIFEST_PREVIEW.forgeVersion}) — major ≥ 17
               </p>
             </div>
           </div>
