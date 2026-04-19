@@ -47,8 +47,8 @@ const DEFAULT_SETTINGS = {
     closeOnLaunch: false,
   },
   java: {
-    minRamMb: 2048,
-    maxRamMb: 4096,
+    minRamMb: 4096,
+    maxRamMb: 8192,
     executablePath: "",
     jvmArgs: "",
     autoDownloadRuntime: true,
@@ -191,10 +191,9 @@ ipcMain.handle("settings:openInstanceFolder", async () => {
 })
 ipcMain.handle("java:detect", async () => {
   const settings = await readLauncherSettings()
-  const memory = systemMemoryInfo()
   const java = await resolveJavaForSettings(settings.java, 17, 17)
   return {
-    ...memory,
+    totalRamMb: systemRamMb(),
     java,
   }
 })
@@ -224,6 +223,84 @@ ipcMain.handle("java:chooseExecutable", async () => {
   })
   await writeLauncherSettings(next)
   return { settings: next, java }
+})
+
+ipcMain.handle("mods:listDropins", async () => {
+  const root = await currentInstanceRoot()
+  return refreshDropinState(root)
+})
+ipcMain.handle("mods:addDropins", async () => {
+  const root = await currentInstanceRoot()
+  const result = await dialog.showOpenDialog(mainWindow || undefined, {
+    title: "Adicionar drop-in mod",
+    properties: ["openFile", "multiSelections"],
+    filters: [{ name: "Minecraft mods", extensions: ["jar"] }],
+  })
+  if (result.canceled || result.filePaths.length === 0) return refreshDropinState(root)
+
+  await fs.mkdir(dropinDir(root), { recursive: true })
+  for (const source of result.filePaths) {
+    const filename = sanitizeDropinFilename(path.basename(source))
+    const target = path.join(dropinDir(root), filename)
+    if (path.resolve(source) !== path.resolve(target)) {
+      await fs.copyFile(source, target)
+    }
+    await fs.rm(`${target}.disabled`, { force: true }).catch(() => undefined)
+  }
+  return refreshDropinState(root)
+})
+ipcMain.handle("mods:setOptional", async (_event, payload) => {
+  const root = await currentInstanceRoot()
+  const filePath = String(payload?.path || "")
+  if (!filePath.startsWith("mods/")) throw new Error("Mod opcional invalido.")
+
+  const state = await readInstanceState(
+    root,
+    DEFAULT_MANIFEST,
+    DEFAULT_MANIFEST.instanceId || "aetherion-main",
+  )
+  const next = {
+    ...state,
+    enabledOptionalMods: {
+      ...state.enabledOptionalMods,
+      [filePath]: Boolean(payload?.enabled),
+    },
+  }
+  await writeInstanceState(root, next)
+  return next.enabledOptionalMods
+})
+ipcMain.handle("mods:setDropinEnabled", async (_event, payload) => {
+  const root = await currentInstanceRoot()
+  const filename = sanitizeDropinFilename(payload?.filename)
+  const enabledPath = path.join(dropinDir(root), filename)
+  const disabledPath = `${enabledPath}.disabled`
+
+  if (payload?.enabled) {
+    if (fsSync.existsSync(disabledPath)) {
+      await fs.rm(enabledPath, { force: true }).catch(() => undefined)
+      await fs.rename(disabledPath, enabledPath)
+    }
+  } else if (fsSync.existsSync(enabledPath)) {
+    await fs.rm(disabledPath, { force: true }).catch(() => undefined)
+    await fs.rename(enabledPath, disabledPath)
+  }
+
+  return refreshDropinState(root)
+})
+ipcMain.handle("mods:removeDropin", async (_event, filename) => {
+  const root = await currentInstanceRoot()
+  const clean = sanitizeDropinFilename(filename)
+  const enabledPath = path.join(dropinDir(root), clean)
+  await fs.rm(enabledPath, { force: true }).catch(() => undefined)
+  await fs.rm(`${enabledPath}.disabled`, { force: true }).catch(() => undefined)
+  return refreshDropinState(root)
+})
+ipcMain.handle("mods:openDropinFolder", async () => {
+  const root = await currentInstanceRoot()
+  await fs.mkdir(dropinDir(root), { recursive: true })
+  const error = await shell.openPath(dropinDir(root))
+  if (error) throw new Error(error)
+  return { ok: true }
 })
 
 ipcMain.handle("launch:start", async (_event, args) => {
@@ -378,18 +455,13 @@ function sanitizeLauncherSettings(value) {
   )
   const closeOnLaunch = Boolean(minecraft.closeOnLaunch)
   const instanceId = DEFAULT_MANIFEST.instanceId || "aetherion-main"
-  const memory = systemMemoryInfo()
-  const minRamMb = clampNumber(
-    java.minRamMb,
-    512,
-    memory.safeMaxRamMb,
-    DEFAULT_SETTINGS.java.minRamMb,
-  )
+  const totalRam = systemRamMb()
+  const minRamMb = clampNumber(java.minRamMb, 512, totalRam, DEFAULT_SETTINGS.java.minRamMb)
   const maxRamMb = clampNumber(
     java.maxRamMb,
     1024,
-    memory.safeMaxRamMb,
-    Math.min(DEFAULT_SETTINGS.java.maxRamMb, memory.safeMaxRamMb),
+    totalRam,
+    Math.min(DEFAULT_SETTINGS.java.maxRamMb, totalRam),
   )
 
   return {
@@ -431,27 +503,6 @@ function sanitizeLauncherSettings(value) {
 
 function systemRamMb() {
   return Math.max(1024, Math.floor(os.totalmem() / 1024 / 1024))
-}
-
-function systemMemoryInfo() {
-  const totalRamMb = systemRamMb()
-  const freeRamMb = Math.max(0, Math.floor(os.freemem() / 1024 / 1024))
-  const safeByTotal = totalRamMb - 4096
-  const safeByFree = freeRamMb - 2048
-  const safeMaxRamMb = roundDownToStep(
-    Math.max(2048, Math.min(12288, safeByTotal, safeByFree)),
-    512,
-  )
-
-  return {
-    totalRamMb,
-    freeRamMb,
-    safeMaxRamMb,
-  }
-}
-
-function roundDownToStep(value, step) {
-  return Math.max(step, Math.floor(value / step) * step)
 }
 
 function settingsPath() {
@@ -498,10 +549,14 @@ async function runUpdater(args, signal) {
     message: `Escaneando instancia local em ${root}`,
   })
 
-  const [localState, installedHashes] = await Promise.all([
+  let [localState, installedHashes] = await Promise.all([
     readInstanceState(root, manifest, instanceId),
     scanInstalledHashes(root),
   ])
+  localState = {
+    ...localState,
+    dropinMods: await scanDropinMods(root, localState.dropinMods),
+  }
   throwIfAborted(signal)
 
   const plan = computeUpdatePlan(manifest, localState, installedHashes)
@@ -1431,6 +1486,64 @@ async function writeInstanceState(root, state) {
   await fs.writeFile(instanceStatePath(root), `${JSON.stringify(state, null, 2)}\n`, "utf8")
 }
 
+async function currentInstanceRoot() {
+  const settings = await readLauncherSettings()
+  return settings.minecraft.gameDirectory || instancePath(DEFAULT_MANIFEST.instanceId || "aetherion-main")
+}
+
+function dropinDir(root) {
+  return path.join(root, "mods", "dropin")
+}
+
+function sanitizeDropinFilename(value) {
+  const filename = path.basename(String(value || "").trim())
+  if (!/\.jar$/i.test(filename)) throw new Error("Drop-in mod precisa ser um arquivo .jar.")
+  return filename.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+}
+
+async function refreshDropinState(root) {
+  const instanceId = DEFAULT_MANIFEST.instanceId || "aetherion-main"
+  const state = await readInstanceState(root, DEFAULT_MANIFEST, instanceId)
+  const dropinMods = await scanDropinMods(root, state.dropinMods)
+  const next = { ...state, instanceId, dropinMods }
+  await writeInstanceState(root, next)
+  return dropinMods
+}
+
+async function scanDropinMods(root, knownMods = []) {
+  const dir = dropinDir(root)
+  await fs.mkdir(dir, { recursive: true })
+  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+  const known = new Map((knownMods || []).map((mod) => [mod.filename, mod]))
+  const byFilename = new Map()
+
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    const lower = entry.name.toLowerCase()
+    const enabled = lower.endsWith(".jar")
+    const disabled = lower.endsWith(".jar.disabled")
+    if (!enabled && !disabled) continue
+
+    const filename = disabled ? entry.name.slice(0, -".disabled".length) : entry.name
+    if (!/\.jar$/i.test(filename)) continue
+
+    const filePath = path.join(dir, entry.name)
+    const stat = await fs.stat(filePath)
+    const previous = known.get(filename)
+    const record = {
+      filename,
+      size: stat.size,
+      enabled,
+      addedAt: previous?.addedAt || stat.birthtime?.toISOString() || new Date().toISOString(),
+    }
+
+    const current = byFilename.get(filename)
+    if (!current || record.enabled) byFilename.set(filename, record)
+  }
+
+  return [...byFilename.values()].sort((a, b) => a.filename.localeCompare(b.filename))
+}
+
 function computeUpdatePlan(manifest, local, installedHashes) {
   const actions = []
   const needsForgeInstall =
@@ -1488,6 +1601,8 @@ function computeUpdatePlan(manifest, local, installedHashes) {
   for (const filePath of Object.keys(installedHashes)) {
     if (validPaths.has(filePath)) continue
     if (filePath.startsWith("forge/")) continue
+    if (filePath.startsWith("mods/dropin/")) continue
+    if (filePath.startsWith("shaderpacks/")) continue
     if (dropinSet.has(filePath)) continue
     if (isProtected(filePath, protectedPatterns)) continue
     actions.push({ kind: "remove", path: filePath, reason: "orphan" })

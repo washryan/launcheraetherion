@@ -50,8 +50,6 @@ declare global {
       java: {
         detect: () => Promise<{
           totalRamMb: number
-          freeRamMb: number
-          safeMaxRamMb: number
           java: {
             path: string
             major: number
@@ -66,6 +64,20 @@ declare global {
             version: string
           }
         } | null>
+      }
+      mods: {
+        listDropins: () => Promise<import("@/lib/launcher/types").DropinMod[]>
+        addDropins: () => Promise<import("@/lib/launcher/types").DropinMod[]>
+        setOptional: (
+          path: string,
+          enabled: boolean,
+        ) => Promise<Record<string, boolean>>
+        setDropinEnabled: (
+          filename: string,
+          enabled: boolean,
+        ) => Promise<import("@/lib/launcher/types").DropinMod[]>
+        removeDropin: (filename: string) => Promise<import("@/lib/launcher/types").DropinMod[]>
+        openDropinFolder: () => Promise<{ ok: boolean }>
       }
     }
   }

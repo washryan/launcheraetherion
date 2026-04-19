@@ -40,18 +40,6 @@ export const MOCK_ACCOUNTS: Account[] = [
 ]
 
 export const MOCK_DROPIN_MODS: DropinMod[] = [
-  {
-    filename: "xaeros-minimap-24.3.0.jar",
-    size: 980_000,
-    enabled: true,
-    addedAt: "2026-04-12T14:20:00Z",
-  },
-  {
-    filename: "optifine-1.19.2_HD_U_I5.jar",
-    size: 8_100_000,
-    enabled: false,
-    addedAt: "2026-04-10T09:05:00Z",
-  },
 ]
 
 export const DEFAULT_SETTINGS: LauncherSettings = {
@@ -63,8 +51,8 @@ export const DEFAULT_SETTINGS: LauncherSettings = {
     closeOnLaunch: false,
   },
   java: {
-    minRamMb: 2048,
-    maxRamMb: 4096,
+    minRamMb: 4096,
+    maxRamMb: 8192,
     executablePath: "C:\\Program Files\\Eclipse Adoptium\\jdk-17\\bin\\javaw.exe",
     jvmArgs:
       "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions",
@@ -95,129 +83,104 @@ export const MOCK_MOJANG_STATUS: MojangStatus = {
 
 const V = "0.3"
 
+const REQUIRED_MOD_FILENAMES = [
+  "AdvancementPlaques-1.19.2-1.4.7.jar",
+  "aeroblender-1.19.2-1.0.1.jar",
+  "aether-1.19.2-1.4.2-forge.jar",
+  "AI-Improvements-1.19.2-0.5.2.jar",
+  "alexsdelight-1.4.1.jar",
+  "alexsmobs-1.21.1.jar",
+  "AlltheCompatibility-1.19.2-(v.2.1.1b).jar",
+  "allthemodium-2.1.8-1.19.2-43.1.1.jar",
+  "alltheores-2.0.2-1.19.2-43.1.3.jar",
+  "Apotheosis-1.19.2-6.5.2.jar",
+  "apotheotic_additions1.0.4.jar",
+  "ApothicCurios-1.19.2-1.0.3c.jar",
+  "appleskin-forge-mc1.19-2.4.2.jar",
+  "Aquaculture-1.19.2-2.4.17.jar",
+  "aquamirae-6.API15.jar",
+  "architectury-6.6.92-forge.jar",
+  "ArmorDamageLimit-1.19.2-1.0.0.jar",
+  "ars_additions-1.19.2-1.4.0.jar",
+  "ars_elemental-1.19.2-0.5.9.4.1.jar",
+  "ars_nouveau-1.19.2-3.23.0.jar",
+  "atmospheric-1.19.2-5.1.2.jar",
+  "AttributeFix-Forge-1.19.2-17.2.8.jar",
+  "blueprint-1.19.2-6.2.0.jar",
+  "buildinggadgets-3.16.3-build.26+mc1.19.2.jar",
+  "citadel-2.1.4-1.19.jar",
+  "create-1.19.2-0.5.1.i.jar",
+  "Cucumber-1.19.2-6.0.11.jar",
+  "curios-forge-1.19.2-5.1.6.4.jar",
+  "easy-villagers-forge-1.19.2-1.1.23.jar",
+  "FarmersDelight-1.19.2-1.2.4.jar",
+  "ftb-library-forge-1902.4.1-build.236.jar",
+  "ftb-ultimine-forge-1902.4.2-build.14.jar",
+  "geckolib-forge-1.19-3.1.40.jar",
+  "Iceberg-1.19.2-forge-1.1.4.jar",
+  "L_Enders_Cataclysm-2.46-1.19.2.jar",
+  "lionfishapi-1.8.jar",
+  "Mekanism-1.19.2-10.3.9.13.jar",
+  "MysticalAgriculture-1.19.2-6.0.17.jar",
+  "obscure_api-15.jar",
+  "Patchouli-1.19.2-77.jar",
+  "Placebo-1.19.2-7.4.1.jar",
+  "sophisticatedbackpacks-1.19.2-3.20.2.1035.jar",
+  "sophisticatedcore-1.19.2-0.6.4.730.jar",
+  "sophisticatedstorage-1.19.2-0.9.8.1573.jar",
+  "TerraBlender-forge-1.19.2-2.0.1.166.jar",
+]
+
+const OPTIONAL_MOD_FILENAMES = [
+  "jei-1.19.2-forge-11.8.1.1034.jar",
+  "OptiFine_1.19.2_HD_U_I2.jar",
+]
+
+function modFile(filename: string, type: "required" | "optional", index: number) {
+  const id = filename
+    .replace(/\.jar$/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+  const shaSeed = (index + 1).toString(16).padStart(2, "0")
+
+  return {
+    path: `mods/${filename}`,
+    url: releaseAssetUrl(V, filename),
+    sha256: shaSeed.repeat(32),
+    size: 0,
+    type,
+    id,
+    name: filename.replace(/\.jar$/i, ""),
+    tag: type === "optional" ? "Opcional" : "Obrigatorio",
+    defaultEnabled: type === "optional" ? filename.toLowerCase().startsWith("jei-") : undefined,
+  }
+}
+
 export const MOCK_MANIFEST: Manifest = {
   version: V,
   minecraft: "1.19.2",
   name: "Aetherion Main",
   instanceId: "aetherion-main",
-  publishedAt: "2026-04-14T12:00:00Z",
-  changelog: "- Novo sistema de classes\n- Balanceamento de mobs\n- Bugfix em dungeons",
+  publishedAt: "2026-04-19T00:00:00Z",
+  changelog:
+    "- Launcher Electron inicia Minecraft/Forge 1.19.2\n- Configuracoes de Java e Minecraft persistentes\n- Lista inicial de mods Aetherion cadastrada",
 
   forge: {
-    version: "43.3.13",
-    url: releaseAssetUrl(V, "forge-1.19.2-43.3.13-installer.jar"),
+    version: "43.5.0",
+    url: releaseAssetUrl(V, "forge-1.19.2-43.5.0-installer.jar"),
     sha256: "a1".repeat(32),
-    size: 5_400_000,
-    installedProfile: "1.19.2-forge-43.3.13",
+    size: 7_180_192,
+    installedProfile: "1.19.2-forge-43.5.0",
   },
 
   files: [
-    // --- Required ---
-    {
-      path: "mods/aetherion-core-2.4.1.jar",
-      url: releaseAssetUrl(V, "aetherion-core-2.4.1.jar"),
-      sha256: "b1".repeat(32),
-      size: 4_200_000,
-      type: "required",
-      id: "aetherion-core",
-      name: "Aetherion Core",
-      version: "2.4.1",
-      tag: "Core",
-      author: "Aetherion Team",
-    },
-    {
-      path: "mods/create-0.5.1f.jar",
-      url: releaseAssetUrl(V, "create-0.5.1f.jar"),
-      sha256: "b2".repeat(32),
-      size: 15_800_000,
-      type: "required",
-      id: "create",
-      name: "Create",
-      version: "0.5.1f",
-      tag: "Tech",
-      author: "simibubi",
-    },
-    {
-      path: "mods/jei-11.6.0.jar",
-      url: releaseAssetUrl(V, "jei-11.6.0.jar"),
-      sha256: "b3".repeat(32),
-      size: 2_100_000,
-      type: "required",
-      id: "jei",
-      name: "Just Enough Items",
-      version: "11.6.0",
-      tag: "Utility",
-      author: "mezz",
-    },
-    {
-      path: "mods/ironchests-14.2.9.jar",
-      url: releaseAssetUrl(V, "ironchests-14.2.9.jar"),
-      sha256: "b4".repeat(32),
-      size: 850_000,
-      type: "required",
-      id: "iron-chests",
-      name: "Iron Chests",
-      version: "14.2.9",
-      tag: "Storage",
-      author: "ProgWML6",
-    },
-
-    // --- Optional ---
-    {
-      path: "mods/journeymap-5.9.7.jar",
-      url: releaseAssetUrl(V, "journeymap-5.9.7.jar"),
-      sha256: "c1".repeat(32),
-      size: 3_400_000,
-      type: "optional",
-      id: "journeymap",
-      name: "JourneyMap",
-      version: "5.9.7",
-      tag: "Map",
-      author: "techbrew",
-      defaultEnabled: true,
-    },
-    {
-      path: "mods/soundphysics-1.1.6.jar",
-      url: releaseAssetUrl(V, "soundphysics-1.1.6.jar"),
-      sha256: "c2".repeat(32),
-      size: 520_000,
-      type: "optional",
-      id: "sound-physics",
-      name: "Sound Physics Remastered",
-      version: "1.1.6",
-      tag: "Audio",
-      author: "vlad2305m",
-      defaultEnabled: false,
-    },
-    {
-      path: "mods/dynamiclights-1.7.4.jar",
-      url: releaseAssetUrl(V, "dynamiclights-1.7.4.jar"),
-      sha256: "c3".repeat(32),
-      size: 210_000,
-      type: "optional",
-      id: "dynamic-lights",
-      name: "Dynamic Lights",
-      version: "1.7.4",
-      tag: "Graphics",
-      author: "atomicstryker",
-      defaultEnabled: true,
-    },
-
-    // --- Configs ---
-    {
-      path: "config/aetherion-common.toml",
-      url: releaseAssetUrl(V, "aetherion-common.toml"),
-      sha256: "d1".repeat(32),
-      size: 3_200,
-      type: "config",
-    },
-    {
-      path: "config/create-client.toml",
-      url: releaseAssetUrl(V, "create-client.toml"),
-      sha256: "d2".repeat(32),
-      size: 1_800,
-      type: "config",
-    },
+    ...REQUIRED_MOD_FILENAMES.map((filename, index) =>
+      modFile(filename, "required", index),
+    ),
+    ...OPTIONAL_MOD_FILENAMES.map((filename, index) =>
+      modFile(filename, "optional", REQUIRED_MOD_FILENAMES.length + index),
+    ),
   ],
 
   java: {
@@ -226,7 +189,7 @@ export const MOCK_MANIFEST: Manifest = {
   },
 
   endpoints: {
-    serverHost: "play.aetherion.gg",
+    serverHost: "left-fcc.gl.joinmc.link",
     serverPort: 25565,
     site: "https://aetherion-network.github.io/aetherion-launcher-assets/",
     discord: "https://discord.gg/aetherion",

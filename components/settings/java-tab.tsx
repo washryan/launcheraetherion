@@ -20,8 +20,6 @@ type DetectedJava = {
 export function JavaTab() {
   const [java, setJava] = useState(DEFAULT_SETTINGS.java)
   const [totalRamMb, setTotalRamMb] = useState(FALLBACK_SYSTEM_RAM_MB)
-  const [freeRamMb, setFreeRamMb] = useState(0)
-  const [safeMaxRamMb, setSafeMaxRamMb] = useState(4096)
   const [detectedJava, setDetectedJava] = useState<DetectedJava>(null)
   const [status, setStatus] = useState("Carregando configuracao Java...")
 
@@ -44,8 +42,6 @@ export function JavaTab() {
       .detect()
       .then((info) => {
         setTotalRamMb(info.totalRamMb)
-        setFreeRamMb(info.freeRamMb)
-        setSafeMaxRamMb(info.safeMaxRamMb)
         setDetectedJava(info.java)
         setStatus(
           info.java
@@ -97,21 +93,19 @@ export function JavaTab() {
   const maxGb = java.maxRamMb / 1024
   const minGb = java.minRamMb / 1024
   const totalGb = totalRamMb / 1024
-  const freeGb = freeRamMb / 1024
-  const safeMaxGb = safeMaxRamMb / 1024
 
   return (
     <>
       <SettingsSection
         title="Memoria"
-        description={`Total: ${totalGb.toFixed(1)} GB. Livre agora: ${freeGb.toFixed(1)} GB. Limite seguro: ${safeMaxGb.toFixed(1)} GB.`}
+        description={`Total do sistema: ${totalGb.toFixed(1)} GB. Recomendado: 6-10 GB para modpacks.`}
       >
         <div className="rounded-lg border border-border/50 bg-card/40 p-5 space-y-6">
           <MemorySlider
             label="RAM maxima"
             value={java.maxRamMb}
             min={2048}
-            max={safeMaxRamMb}
+            max={totalRamMb}
             onChange={(v) =>
               updateJavaPreview((s) => ({ ...s, maxRamMb: Math.max(v, s.minRamMb) }))
             }
@@ -136,8 +130,8 @@ export function JavaTab() {
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          O limite seguro reserva memoria para Windows, Electron, Java nativo e driver de video.
-          Feche programas pesados ou aumente o arquivo de paginacao do Windows se precisar subir mais.
+          O launcher aplica estes valores como -Xms e -Xmx no processo do Minecraft.
+          Se o Java gerar erro de memoria, reduza a RAM ou aumente o arquivo de paginacao do Windows.
         </p>
       </SettingsSection>
 

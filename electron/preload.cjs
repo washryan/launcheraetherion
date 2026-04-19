@@ -33,4 +33,13 @@ contextBridge.exposeInMainWorld("aetherion", {
     detect: () => ipcRenderer.invoke("java:detect"),
     chooseExecutable: () => ipcRenderer.invoke("java:chooseExecutable"),
   },
+  mods: {
+    listDropins: () => ipcRenderer.invoke("mods:listDropins"),
+    addDropins: () => ipcRenderer.invoke("mods:addDropins"),
+    setOptional: (path, enabled) => ipcRenderer.invoke("mods:setOptional", { path, enabled }),
+    setDropinEnabled: (filename, enabled) =>
+      ipcRenderer.invoke("mods:setDropinEnabled", { filename, enabled }),
+    removeDropin: (filename) => ipcRenderer.invoke("mods:removeDropin", filename),
+    openDropinFolder: () => ipcRenderer.invoke("mods:openDropinFolder"),
+  },
 })

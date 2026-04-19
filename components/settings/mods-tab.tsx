@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Lock, Plus, RefreshCw, Trash2, Upload } from "lucide-react"
+import { useEffect, useState } from "react"
+import { FolderOpen, Lock, Plus, RefreshCw, Trash2, Upload } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,6 +32,80 @@ export function ModsTab() {
     Object.fromEntries(OPTIONAL_MODS.map((m) => [m.path, m.defaultEnabled ?? false])),
   )
   const [dropins, setDropins] = useState<DropinMod[]>(MOCK_DROPIN_MODS)
+  const [status, setStatus] = useState("Drop-ins locais prontos.")
+
+  useEffect(() => {
+    reloadDropins()
+  }, [])
+
+  async function reloadDropins() {
+    try {
+      const mods = await window.aetherion?.mods?.listDropins()
+      if (mods) setDropins(mods)
+      setStatus("Drop-ins atualizados.")
+    } catch (err) {
+      console.warn("[aetherion] failed to load drop-in mods", err)
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function addDropins() {
+    try {
+      const mods = await window.aetherion?.mods?.addDropins()
+      if (mods) setDropins(mods)
+      setStatus("Mod adicionado em mods/dropin.")
+    } catch (err) {
+      console.warn("[aetherion] failed to add drop-in mod", err)
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function toggleOptional(path: string, enabled: boolean) {
+    setOptional((prev) => ({ ...prev, [path]: enabled }))
+    try {
+      await window.aetherion?.mods?.setOptional(path, enabled)
+    } catch (err) {
+      console.warn("[aetherion] failed to update optional mod", err)
+      setOptional((prev) => ({ ...prev, [path]: !enabled }))
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function toggleDropin(filename: string, enabled: boolean) {
+    setDropins((prev) =>
+      prev.map((mod) => (mod.filename === filename ? { ...mod, enabled } : mod)),
+    )
+    try {
+      const mods = await window.aetherion?.mods?.setDropinEnabled(filename, enabled)
+      if (mods) setDropins(mods)
+    } catch (err) {
+      console.warn("[aetherion] failed to toggle drop-in mod", err)
+      await reloadDropins()
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function removeDropin(filename: string) {
+    setDropins((prev) => prev.filter((mod) => mod.filename !== filename))
+    try {
+      const mods = await window.aetherion?.mods?.removeDropin(filename)
+      if (mods) setDropins(mods)
+      setStatus("Drop-in removido.")
+    } catch (err) {
+      console.warn("[aetherion] failed to remove drop-in mod", err)
+      await reloadDropins()
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function openDropinFolder() {
+    try {
+      await window.aetherion?.mods?.openDropinFolder()
+    } catch (err) {
+      console.warn("[aetherion] failed to open drop-in folder", err)
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   return (
     <>
@@ -56,7 +130,7 @@ export function ModsTab() {
               key={mod.path}
               mod={mod}
               enabled={optional[mod.path]}
-              onToggle={(v) => setOptional((prev) => ({ ...prev, [mod.path]: v }))}
+              onToggle={(v) => toggleOptional(mod.path, v)}
             />
           ))}
         </div>
@@ -67,18 +141,38 @@ export function ModsTab() {
         description="Mods que você adicionou manualmente. O launcher preserva esses arquivos durante atualizações."
       >
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-9 gap-2 bg-transparent">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-2 bg-transparent"
+            onClick={addDropins}
+          >
             <Upload className="size-4" />
             Adicionar .jar
           </Button>
-          <Button variant="ghost" size="sm" className="h-9 gap-2 text-muted-foreground">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 gap-2 text-muted-foreground"
+            onClick={reloadDropins}
+          >
             <RefreshCw className="size-4" />
             Recarregar
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 gap-2 text-muted-foreground"
+            onClick={openDropinFolder}
+          >
+            <FolderOpen className="size-4" />
+            Abrir pasta
           </Button>
           <p className="ml-auto text-xs text-muted-foreground">
             Pasta: <code className="font-mono">mods/dropin/</code>
           </p>
         </div>
+        <p className="text-[11px] text-muted-foreground">{status}</p>
 
         <div className="rounded-lg border border-border/50 divide-y divide-border/40">
           {dropins.length === 0 ? (
@@ -86,7 +180,7 @@ export function ModsTab() {
               Nenhum mod adicionado ainda.
             </div>
           ) : (
-            dropins.map((mod, i) => (
+            dropins.map((mod) => (
               <div key={mod.filename} className="flex items-center gap-4 px-4 py-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-mono text-foreground truncate">
@@ -96,19 +190,13 @@ export function ModsTab() {
                 </div>
                 <Switch
                   checked={mod.enabled}
-                  onCheckedChange={(v) =>
-                    setDropins((prev) =>
-                      prev.map((m, idx) => (idx === i ? { ...m, enabled: v } : m)),
-                    )
-                  }
+                  onCheckedChange={(v) => toggleDropin(mod.filename, v)}
                 />
                 <Button
                   size="icon"
                   variant="ghost"
                   className="size-8 text-muted-foreground hover:text-destructive"
-                  onClick={() =>
-                    setDropins((prev) => prev.filter((m) => m.filename !== mod.filename))
-                  }
+                  onClick={() => removeDropin(mod.filename)}
                   aria-label={`Remover ${mod.filename}`}
                 >
                   <Trash2 className="size-4" />
