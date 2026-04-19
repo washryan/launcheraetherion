@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron")
+const { spawn } = require("node:child_process")
 const crypto = require("node:crypto")
 const fsSync = require("node:fs")
 const fs = require("node:fs/promises")
@@ -286,19 +287,21 @@ async function runUpdater(args, signal) {
     await executeUpdatePlan(root, plan, signal)
   }
 
+  const installedForgeSha = await installForgeIfNeeded(root, manifest, localState, signal)
+
   const nextState = {
     instanceId,
     installedManifestVersion: manifest.version,
     enabledOptionalMods: localState.enabledOptionalMods || {},
     dropinMods: localState.dropinMods || [],
     lastCheckedAt: new Date().toISOString(),
-    installedForgeSha: manifest.forge.sha256,
+    installedForgeSha,
   }
   await writeInstanceState(root, nextState)
 
   emitLaunchProgress({
     phase: "running",
-    message: "Atualizacao concluida. Launch do Minecraft entra na proxima fase.",
+    message: "Forge pronto. Launch do Minecraft entra na proxima fase.",
     totalBytes: plan.totalBytes,
     loadedBytes: plan.totalBytes,
     filesDone: plan.downloadCount,
@@ -306,6 +309,75 @@ async function runUpdater(args, signal) {
   })
 
   return { minecraft: manifest.minecraft, forge: manifest.forge.version }
+}
+
+async function installForgeIfNeeded(root, manifest, localState, signal) {
+  const targetSha = manifest.forge.sha256
+  const installerPath = safeResolve(
+    root,
+    `forge/forge-${manifest.minecraft}-${manifest.forge.version}-installer.jar`,
+  )
+  const profileId =
+    manifest.forge.installedProfile || `${manifest.minecraft}-forge-${manifest.forge.version}`
+  const profileJson = path.join(root, "versions", profileId, `${profileId}.json`)
+
+  if (
+    localState.installedForgeSha?.toLowerCase() === targetSha.toLowerCase() &&
+    fsSync.existsSync(profileJson)
+  ) {
+    emitLaunchProgress({
+      phase: "installing-forge",
+      message: `Forge ${manifest.forge.version} ja instalado.`,
+    })
+    return targetSha
+  }
+
+  if (!fsSync.existsSync(installerPath)) {
+    throw new Error(`Forge installer nao encontrado: ${installerPath}`)
+  }
+
+  emitLaunchProgress({
+    phase: "checking-java",
+    message: "Procurando Java 17 no sistema...",
+  })
+  const java = await findJava(manifest.java?.minMajor || 17)
+  if (!java) {
+    throw new Error(
+      "Java 17 nao encontrado. Instale o Eclipse Temurin/OpenJDK 17 ou configure JAVA_HOME.",
+    )
+  }
+
+  emitLaunchProgress({
+    phase: "installing-forge",
+    message: `Instalando Forge ${manifest.forge.version} com ${java.version}...`,
+  })
+
+  await runProcess(
+    java.path,
+    ["-jar", installerPath, "--installClient", root],
+    { cwd: root },
+    signal,
+    (line) => {
+      if (!line.trim()) return
+      emitLaunchProgress({
+        phase: "installing-forge",
+        message: line.trim().slice(0, 180),
+      })
+    },
+  )
+
+  if (!fsSync.existsSync(profileJson)) {
+    throw new Error(
+      `Forge terminou, mas o perfil nao foi encontrado em versions/${profileId}.`,
+    )
+  }
+
+  emitLaunchProgress({
+    phase: "installing-forge",
+    message: `Forge ${manifest.forge.version} instalado com sucesso.`,
+  })
+
+  return targetSha
 }
 
 async function loadManifest(signal) {
@@ -508,6 +580,147 @@ async function executeUpdatePlan(root, plan, signal) {
   })
 }
 
+async function findJava(minMajor) {
+  const candidates = uniqueTruthy([
+    process.env.AETHERION_JAVA_PATH,
+    process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", javaExecutableName()) : null,
+    "java",
+  ])
+
+  if (process.platform === "win32") {
+    for (const envName of ["ProgramFiles", "ProgramFiles(x86)"]) {
+      const base = process.env[envName]
+      if (!base) continue
+      for (const relative of [
+        "Eclipse Adoptium",
+        "Java",
+        "Microsoft",
+        "Amazon Corretto",
+        "Zulu",
+      ]) {
+        const dir = path.join(base, relative)
+        if (!fsSync.existsSync(dir)) continue
+        const installs = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+        for (const install of installs) {
+          if (!install.isDirectory()) continue
+          candidates.push(path.join(dir, install.name, "bin", javaExecutableName()))
+        }
+      }
+    }
+  }
+
+  const seen = new Set()
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue
+    seen.add(candidate)
+    const result = await inspectJava(candidate)
+    if (result && result.major >= minMajor) return result
+  }
+  return null
+}
+
+function javaExecutableName() {
+  return process.platform === "win32" ? "java.exe" : "java"
+}
+
+async function inspectJava(candidate) {
+  try {
+    const output = await captureProcess(candidate, ["-version"], { timeoutMs: 8000 })
+    const text = `${output.stdout}\n${output.stderr}`
+    const major = parseJavaMajor(text)
+    if (!major) return null
+    return { path: candidate, major, version: firstLine(text) || `Java ${major}` }
+  } catch {
+    return null
+  }
+}
+
+function parseJavaMajor(text) {
+  const match = text.match(/version\s+"([^"]+)"/i) || text.match(/openjdk\s+([^\s]+)/i)
+  if (!match) return null
+  const version = match[1]
+  if (version.startsWith("1.")) return Number.parseInt(version.split(".")[1], 10)
+  return Number.parseInt(version.split(".")[0], 10)
+}
+
+function firstLine(text) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean)
+}
+
+function captureProcess(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      windowsHide: true,
+      shell: false,
+      cwd: options.cwd,
+    })
+    let stdout = ""
+    let stderr = ""
+    const timeout =
+      options.timeoutMs &&
+      setTimeout(() => {
+        child.kill()
+        reject(new Error(`Process timeout: ${command} ${args.join(" ")}`))
+      }, options.timeoutMs)
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString()
+    })
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString()
+    })
+    child.on("error", (error) => {
+      if (timeout) clearTimeout(timeout)
+      reject(error)
+    })
+    child.on("close", (code) => {
+      if (timeout) clearTimeout(timeout)
+      if (code === 0) resolve({ stdout, stderr })
+      else reject(new Error(`Process exited with ${code}: ${stderr || stdout}`))
+    })
+  })
+}
+
+function runProcess(command, args, options, signal, onLine) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options?.cwd,
+      windowsHide: true,
+      shell: false,
+    })
+    let tail = ""
+
+    const handleData = (chunk) => {
+      tail += chunk.toString()
+      const lines = tail.split(/\r?\n/)
+      tail = lines.pop() || ""
+      for (const line of lines) onLine?.(line)
+    }
+
+    const abort = () => {
+      child.kill()
+      reject(new Error("Operacao cancelada."))
+    }
+
+    signal?.addEventListener("abort", abort, { once: true })
+    child.stdout.on("data", handleData)
+    child.stderr.on("data", handleData)
+    child.on("error", (error) => {
+      signal?.removeEventListener("abort", abort)
+      reject(error)
+    })
+    child.on("close", (code) => {
+      signal?.removeEventListener("abort", abort)
+      if (tail.trim()) onLine?.(tail.trim())
+      if (code === 0) resolve()
+      else reject(new Error(`Processo terminou com codigo ${code}.`))
+    })
+  })
+}
+
 async function downloadAction(root, action, signal, onBytes) {
   const target = safeResolve(root, action.path)
   const temp = `${target}.download`
@@ -632,6 +845,10 @@ function toPosix(value) {
 
 function displayName(filePath) {
   return filePath.split("/").pop() || filePath
+}
+
+function uniqueTruthy(values) {
+  return values.filter(Boolean)
 }
 
 function isProtected(filePath, patterns) {
