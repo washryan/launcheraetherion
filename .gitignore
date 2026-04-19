@@ -22,3 +22,5 @@ hs_err_pid*.log
 # Local modpack build inputs / generated manifest
 pack-v*/
 /manifest.json
+release-assets-v*/
+release-v*-upload/
