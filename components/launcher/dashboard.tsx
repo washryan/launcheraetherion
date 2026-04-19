@@ -1,0 +1,231 @@
+"use client"
+
+import { useState } from "react"
+import Image from "next/image"
+import Link from "next/link"
+import { ChevronRight, Cog, Disc, Globe, LogIn, Play, Youtube } from "lucide-react"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import { MOCK_ACCOUNTS, MOCK_MOJANG_STATUS, MOCK_SERVER_STATUS } from "@/lib/launcher/mock-data"
+import { AetherionMark } from "./aetherion-mark"
+
+export function Dashboard() {
+  const activeAccount = MOCK_ACCOUNTS[0]
+  const [isLaunching, setIsLaunching] = useState(false)
+
+  // Fase 5: esse handler dispara o orquestrador nativo:
+  //   1. Verifica manifest remoto → compara com estado local
+  //   2. Baixa mods/configs faltantes com validação sha256
+  //   3. Detecta/baixa Java 17 (Adoptium)
+  //   4. Monta classpath com Forge e lança javaw.exe
+  async function handleLaunch() {
+    setIsLaunching(true)
+    // await window.aetherion.launch({ instanceId: 'aetherion-main', accountId: activeAccount.id })
+    setTimeout(() => setIsLaunching(false), 2200)
+  }
+
+  return (
+    <div className="relative h-full w-full overflow-hidden">
+      {/* Arte de fundo */}
+      <div className="absolute inset-0">
+        <Image
+          src="/aetherion-bg.jpg"
+          alt=""
+          fill
+          priority
+          className="object-cover"
+        />
+        {/* Overlay escuro para legibilidade */}
+        <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/40 to-background/95" />
+        <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-transparent to-background/80" />
+      </div>
+
+      {/* Conteúdo */}
+      <div className="relative h-full flex flex-col">
+        {/* Topo */}
+        <div className="flex items-start justify-between p-8">
+          <div className="flex items-center gap-3">
+            <AetherionMark size={48} />
+            <div>
+              <h1 className="font-serif text-2xl tracking-wide text-foreground">Aetherion</h1>
+              <p className="text-xs text-muted-foreground tracking-[0.2em] uppercase">
+                Reino Etéreo
+              </p>
+            </div>
+          </div>
+
+          <AccountBadge
+            username={activeAccount.username}
+            avatarUrl={activeAccount.avatarUrl}
+            type={activeAccount.type}
+          />
+        </div>
+
+        {/* Centro — vazio para deixar a arte respirar */}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <p className="font-serif text-6xl tracking-[0.15em] text-foreground/90 drop-shadow-2xl">
+              AETHERION
+            </p>
+            <p className="mt-2 text-sm text-primary/80 tracking-[0.4em] uppercase font-medium">
+              Main Realm
+            </p>
+          </div>
+        </div>
+
+        {/* Rodapé — status + botão jogar */}
+        <footer className="border-t border-border/50 bg-background/60 backdrop-blur-xl">
+          <div className="grid grid-cols-12 gap-6 items-center px-8 py-5">
+            {/* Esquerda: status */}
+            <div className="col-span-5 flex items-center gap-8">
+              <StatusBlock
+                label="Jogadores"
+                value={`${MOCK_SERVER_STATUS.players.current} / ${MOCK_SERVER_STATUS.players.max}`}
+                dotClass="bg-primary"
+              />
+              <StatusBlock
+                label="Mojang"
+                value={MOCK_MOJANG_STATUS.auth === "green" ? "Online" : "Instável"}
+                dotClass={
+                  MOCK_MOJANG_STATUS.auth === "green" ? "bg-primary" : "bg-destructive"
+                }
+              />
+              <StatusBlock
+                label="Ping"
+                value={`${MOCK_SERVER_STATUS.ping ?? "--"} ms`}
+                dotClass="bg-accent"
+              />
+            </div>
+
+            {/* Centro: atalhos */}
+            <div className="col-span-3 flex items-center justify-center gap-2">
+              <IconLink href="/settings/account" label="Configurações">
+                <Cog className="size-4" />
+              </IconLink>
+              <IconLink href="#" label="Site">
+                <Globe className="size-4" />
+              </IconLink>
+              <IconLink href="#" label="YouTube">
+                <Youtube className="size-4" />
+              </IconLink>
+              <IconLink href="#" label="Discord">
+                <Disc className="size-4" />
+              </IconLink>
+            </div>
+
+            {/* Direita: botão jogar */}
+            <div className="col-span-4 flex items-center justify-end gap-4">
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+                  Instância
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  Aetherion Main{" "}
+                  <span className="text-muted-foreground font-normal">• 1.19.2</span>
+                </p>
+              </div>
+
+              <Button
+                size="lg"
+                onClick={handleLaunch}
+                disabled={isLaunching}
+                className={cn(
+                  "h-14 px-8 rounded-md font-serif text-lg tracking-[0.25em]",
+                  "bg-primary text-primary-foreground hover:bg-primary/90",
+                  "aetherion-gold-glow",
+                )}
+              >
+                {isLaunching ? (
+                  <span className="inline-flex items-center gap-3">
+                    <span className="size-2 rounded-full bg-primary-foreground animate-pulse" />
+                    PREPARANDO
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-3">
+                    <Play className="size-4 fill-primary-foreground" />
+                    JOGAR
+                  </span>
+                )}
+              </Button>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </div>
+  )
+}
+
+function StatusBlock({
+  label,
+  value,
+  dotClass,
+}: {
+  label: string
+  value: string
+  dotClass: string
+}) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">{label}</p>
+      <div className="mt-1 flex items-center gap-2">
+        <span className={cn("size-1.5 rounded-full", dotClass)} />
+        <span className="text-sm font-medium text-foreground">{value}</span>
+      </div>
+    </div>
+  )
+}
+
+function IconLink({
+  href,
+  label,
+  children,
+}: {
+  href: string
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <Link
+      href={href}
+      aria-label={label}
+      className="size-9 inline-flex items-center justify-center rounded-md border border-border/60 bg-card/50 text-muted-foreground hover:text-primary hover:border-primary/40 transition"
+    >
+      {children}
+    </Link>
+  )
+}
+
+function AccountBadge({
+  username,
+  avatarUrl,
+  type,
+}: {
+  username: string
+  avatarUrl?: string
+  type: "offline" | "microsoft"
+}) {
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 rounded-md border border-border/60 bg-card/60 backdrop-blur-md">
+      <div className="text-right">
+        <p className="text-sm font-medium text-foreground leading-tight">{username}</p>
+        <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          {type === "microsoft" ? "Microsoft" : "Offline"}
+        </p>
+      </div>
+      <Avatar className="size-10 rounded-md ring-1 ring-primary/30">
+        <AvatarImage src={avatarUrl || "/placeholder.svg"} alt={username} />
+        <AvatarFallback className="rounded-md bg-muted text-primary">
+          {username.slice(0, 2).toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
+      <Link
+        href="/login"
+        aria-label="Trocar conta"
+        className="ml-1 size-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-primary transition"
+      >
+        <LogIn className="size-4" />
+      </Link>
+    </div>
+  )
+}

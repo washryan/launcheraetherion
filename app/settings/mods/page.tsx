@@ -1,0 +1,23 @@
+import { SettingsPage } from "@/components/launcher/settings-shell"
+import { ModsTab } from "@/components/settings/mods-tab"
+import { MOCK_MANIFEST_PREVIEW } from "@/lib/launcher/mock-data"
+import { Badge } from "@/components/ui/badge"
+
+export default function ModsPage() {
+  return (
+    <SettingsPage
+      title="Mods & Shaders"
+      description="Mods obrigatórios seguem o manifest remoto. Opcionais e drop-in ficam sob seu controle."
+      actions={
+        <Badge
+          variant="outline"
+          className="text-[10px] uppercase tracking-wider border-primary/40 text-primary"
+        >
+          Manifest v{MOCK_MANIFEST_PREVIEW.manifestVersion}
+        </Badge>
+      }
+    >
+      <ModsTab />
+    </SettingsPage>
+  )
+}

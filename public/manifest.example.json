@@ -1,0 +1,104 @@
+{
+  "$schema": "https://aetherion.gg/schema/manifest-v1.json",
+  "manifestVersion": "1.4.2",
+  "instanceId": "aetherion-main",
+  "name": "Aetherion Main",
+  "description": "Modpack oficial do servidor Aetherion — build 1.4.2",
+  "publishedAt": "2026-04-14T12:00:00Z",
+
+  "requiredLauncherVersion": "0.1.0",
+
+  "minecraft": {
+    "version": "1.19.2",
+    "loader": { "type": "forge", "version": "43.3.13" }
+  },
+
+  "java": {
+    "recommendedMajor": 17,
+    "minMajor": 17,
+    "runtimes": {
+      "windows-x64": {
+        "url": "https://cdn.aetherion.gg/runtimes/temurin-17-win-x64.zip",
+        "sha256": "REPLACE_WITH_REAL_SHA256",
+        "size": 189456789
+      },
+      "linux-x64": {
+        "url": "https://cdn.aetherion.gg/runtimes/temurin-17-linux-x64.tar.gz",
+        "sha256": "REPLACE_WITH_REAL_SHA256",
+        "size": 178900000
+      },
+      "macos-arm64": {
+        "url": "https://cdn.aetherion.gg/runtimes/temurin-17-macos-arm64.tar.gz",
+        "sha256": "REPLACE_WITH_REAL_SHA256",
+        "size": 172000000
+      }
+    }
+  },
+
+  "categories": {
+    "required": [
+      {
+        "id": "aetherion-core",
+        "name": "Aetherion Core",
+        "version": "2.4.1",
+        "filename": "aetherion-core-2.4.1.jar",
+        "url": "https://cdn.aetherion.gg/mods/aetherion-core-2.4.1.jar",
+        "sha256": "REPLACE_WITH_REAL_SHA256",
+        "size": 4200000,
+        "tag": "Core",
+        "author": "Aetherion Team",
+        "locked": true
+      },
+      {
+        "id": "create",
+        "name": "Create",
+        "version": "0.5.1f",
+        "filename": "create-0.5.1f.jar",
+        "url": "https://cdn.aetherion.gg/mods/create-0.5.1f.jar",
+        "sha256": "REPLACE_WITH_REAL_SHA256",
+        "size": 15800000,
+        "tag": "Tech",
+        "author": "simibubi",
+        "locked": true
+      }
+    ],
+    "optional": [
+      {
+        "id": "journeymap",
+        "name": "JourneyMap",
+        "version": "5.9.7",
+        "filename": "journeymap-5.9.7.jar",
+        "url": "https://cdn.aetherion.gg/mods/journeymap-5.9.7.jar",
+        "sha256": "REPLACE_WITH_REAL_SHA256",
+        "size": 3400000,
+        "tag": "Map",
+        "author": "techbrew",
+        "defaultEnabled": true
+      }
+    ],
+    "dropin": {
+      "preserve": true,
+      "protectedPatterns": ["optifine*.jar", "xaeros*.jar", "shader*.jar"]
+    }
+  },
+
+  "configs": [
+    {
+      "path": "config/aetherion-core.toml",
+      "url": "https://cdn.aetherion.gg/configs/aetherion-core.toml",
+      "sha256": "REPLACE_WITH_REAL_SHA256",
+      "size": 2048
+    }
+  ],
+
+  "resourcePacks": [],
+  "shaderpacks": [],
+
+  "endpoints": {
+    "serverStatus": "https://api.aetherion.gg/status",
+    "news": "https://aetherion.gg/news.json",
+    "site": "https://aetherion.gg",
+    "discord": "https://discord.gg/aetherion",
+    "youtube": "https://youtube.com/@aetherion"
+  }
+}
