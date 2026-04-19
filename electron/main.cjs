@@ -1432,7 +1432,14 @@ async function loadManifest(settings, signal) {
     typeof settings?.launcher?.manifestUrl === "string" && settings.launcher.manifestUrl.trim()
       ? settings.launcher.manifestUrl.trim()
       : process.env.AETHERION_MANIFEST_URL
-  if (!url) return DEFAULT_MANIFEST
+  if (!url) {
+    const localManifestPath = process.env.AETHERION_LOCAL_MANIFEST || path.resolve(process.cwd(), "manifest.json")
+    if (isDev && fsSync.existsSync(localManifestPath)) {
+      console.log("[aetherion] using local manifest", localManifestPath)
+      return readJsonFile(localManifestPath)
+    }
+    return DEFAULT_MANIFEST
+  }
 
   const cacheBust = `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`
   const response = await fetch(cacheBust, {
@@ -1920,9 +1927,18 @@ async function downloadAction(root, action, signal, onBytes) {
   const temp = `${target}.download`
   await fs.mkdir(path.dirname(target), { recursive: true })
 
+  const localArtifact = isDev ? findLocalPackArtifact(action) : null
+  if (localArtifact) {
+    await copyLocalArtifactToTemp(localArtifact, temp, action.sha256, signal, onBytes)
+    await fs.rm(target, { force: true }).catch(() => undefined)
+    await fs.rename(temp, target)
+    return
+  }
+
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await downloadToTemp(action.url, temp, action.sha256, signal, onBytes)
+      await fs.rm(target, { force: true }).catch(() => undefined)
       await fs.rename(temp, target)
       return
     } catch (error) {
@@ -1935,6 +1951,64 @@ async function downloadAction(root, action, signal, onBytes) {
 
 async function downloadToTemp(url, temp, expectedSha256, signal, onBytes) {
   await downloadUrlToTemp(url, temp, "sha256", expectedSha256, signal, onBytes)
+}
+
+function findLocalPackArtifact(action) {
+  const filename = path.basename(toPosix(action.path))
+  const releaseVersion = String(action.url || "").match(/\/releases\/download\/v([^/]+)/)?.[1]
+  const packDirs = uniqueTruthy([
+    process.env.AETHERION_LOCAL_PACK_DIR,
+    releaseVersion ? path.resolve(process.cwd(), `pack-v${releaseVersion}`) : null,
+    path.resolve(process.cwd(), "pack"),
+  ])
+
+  for (const base of packDirs) {
+    const candidates = []
+    if (action.category === "forge" || action.path.startsWith("forge/")) {
+      candidates.push(path.join(base, filename))
+      candidates.push(path.join(base, "forge", filename))
+    } else if (action.path.startsWith("mods/")) {
+      candidates.push(path.join(base, "mods", "required", filename))
+      candidates.push(path.join(base, "mods", "optional", filename))
+      candidates.push(path.join(base, "mods", filename))
+    } else {
+      candidates.push(path.resolve(base, ...toPosix(action.path).split("/")))
+      candidates.push(path.join(base, filename))
+    }
+
+    const found = candidates.find((candidate) => fsSync.existsSync(candidate))
+    if (found) return found
+  }
+
+  return null
+}
+
+async function copyLocalArtifactToTemp(source, temp, expectedSha256, signal, onBytes) {
+  throwIfAborted(signal)
+  await fs.mkdir(path.dirname(temp), { recursive: true })
+
+  const hash = crypto.createHash("sha256")
+  const reader = fsSync.createReadStream(source)
+  const writer = fsSync.createWriteStream(temp)
+
+  try {
+    for await (const chunk of reader) {
+      throwIfAborted(signal)
+      hash.update(chunk)
+      onBytes?.(chunk.byteLength)
+      if (!writer.write(chunk)) await once(writer, "drain")
+    }
+  } finally {
+    writer.end()
+  }
+
+  await once(writer, "finish")
+  const actual = hash.digest("hex")
+  if (expectedSha256 && actual.toLowerCase() !== expectedSha256.toLowerCase()) {
+    throw new Error(
+      `Hash SHA256 nao confere para ${source}\n  esperado: ${expectedSha256}\n  recebido: ${actual}`,
+    )
+  }
 }
 
 async function downloadUrlToTemp(url, temp, algorithm, expectedHash, signal, onBytes) {

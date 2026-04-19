@@ -17,3 +17,7 @@ node_modules
 tsconfig.tsbuildinfo
 .DS_Store
 hs_err_pid*.log
+
+# Local modpack build inputs / generated manifest
+pack-v*/
+manifest.json
