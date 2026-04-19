@@ -1793,6 +1793,8 @@ async function findJava(minMajor, preferredMajor = minMajor) {
   ])
 
   if (process.platform === "win32") {
+    candidates.unshift(...(await findMinecraftRuntimeJavas()))
+
     for (const envName of ["ProgramFiles", "ProgramFiles(x86)"]) {
       const base = process.env[envName]
       if (!base) continue
@@ -1831,6 +1833,54 @@ async function findJava(minMajor, preferredMajor = minMajor) {
       return Math.abs(a.major - preferredMajor) - Math.abs(b.major - preferredMajor)
     })[0] || null
   )
+}
+
+async function findMinecraftRuntimeJavas() {
+  if (process.platform !== "win32") return []
+
+  const roots = uniqueTruthy([
+    process.env.APPDATA ? path.join(process.env.APPDATA, ".minecraft", "runtime") : null,
+    process.env.LOCALAPPDATA
+      ? path.join(
+          process.env.LOCALAPPDATA,
+          "Packages",
+          "Microsoft.4297127D64EC6_8wekyb3d8bbwe",
+          "LocalCache",
+          "Local",
+          ".minecraft",
+          "runtime",
+        )
+      : null,
+  ])
+  const candidates = []
+
+  for (const root of roots) {
+    candidates.push(...(await findJavaExecutables(root)))
+  }
+
+  return candidates
+}
+
+async function findJavaExecutables(root) {
+  if (!fsSync.existsSync(root)) return []
+
+  const matches = []
+  async function visit(dir, depth) {
+    if (depth > 8 || matches.length >= 24) return
+
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        await visit(full, depth + 1)
+      } else if (entry.isFile() && entry.name.toLowerCase() === javaExecutableName()) {
+        matches.push(full)
+      }
+    }
+  }
+
+  await visit(root, 0)
+  return matches
 }
 
 function parseJvmArgs(value) {

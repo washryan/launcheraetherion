@@ -4,7 +4,7 @@
   "minecraft": "1.19.2",
   "name": "Aetherion Main",
   "instanceId": "aetherion-main",
-  "publishedAt": "2026-04-19T18:52:44.748Z",
+  "publishedAt": "2026-04-19T19:02:23.980Z",
   "changelog": "- Launcher Electron inicia Minecraft/Forge 1.19.2\n- Configuracoes de Java e Minecraft persistentes\n- Lista inicial de mods Aetherion cadastrada",
   "requiredLauncherVersion": "0.1.0",
   "forge": {
@@ -475,6 +475,17 @@
       "name": "jei-1.19.2-forge-11.8.1.1034",
       "tag": "Opcional",
       "defaultEnabled": true
+    },
+    {
+      "path": "mods/OptiFine_1.19.2_HD_U_I2.jar",
+      "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.3/OptiFine_1.19.2_HD_U_I2.jar",
+      "sha256": "afeb3154848b419ea624cd34e3cb8d5240a63ed4316084fda4aa5092eb87904e",
+      "size": 6924339,
+      "type": "optional",
+      "id": "optifine-1-19-2-hd-u-i2",
+      "name": "OptiFine_1.19.2_HD_U_I2",
+      "tag": "Opcional",
+      "defaultEnabled": false
     }
   ],
   "java": {

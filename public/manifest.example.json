@@ -475,6 +475,17 @@
       "name": "jei-1.19.2-forge-11.8.1.1034",
       "tag": "Opcional",
       "defaultEnabled": true
+    },
+    {
+      "path": "mods/OptiFine_1.19.2_HD_U_I2.jar",
+      "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.3/OptiFine_1.19.2_HD_U_I2.jar",
+      "sha256": "2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f",
+      "size": 0,
+      "type": "optional",
+      "id": "optifine-1-19-2-hd-u-i2",
+      "name": "OptiFine_1.19.2_HD_U_I2",
+      "tag": "Opcional",
+      "defaultEnabled": false
     }
   ],
   "java": {
