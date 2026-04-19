@@ -47,9 +47,3 @@ export const aetherionApi = {
 }
 
 contextBridge.exposeInMainWorld("aetherion", aetherionApi)
-
-declare global {
-  interface Window {
-    aetherion: typeof aetherionApi
-  }
-}

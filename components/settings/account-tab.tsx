@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AlertCircle, Check, Plus, Trash2, UserPlus, X } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -32,6 +32,17 @@ export function AccountTab() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  useEffect(() => {
+    if (!window.aetherion?.accounts) return
+
+    window.aetherion.accounts
+      .list()
+      .then(setState)
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : "Falha ao carregar contas locais."),
+      )
+  }, [])
+
   const validationError = useMemo(
     () => (username ? validateOfflineUsername(username) : null),
     [username],
@@ -42,7 +53,9 @@ export function AccountTab() {
     setError(null)
     setBusy(true)
     try {
-      const next = await addOfflineAccount(state, username)
+      const next = window.aetherion?.accounts
+        ? await window.aetherion.accounts.addOffline(username)
+        : await addOfflineAccount(state, username)
       setState(next)
       setUsername("")
       setMode("idle")
@@ -53,12 +66,30 @@ export function AccountTab() {
     }
   }
 
-  function handleRemove(id: string) {
-    setState((prev) => removeAccountLib(prev, id))
+  async function handleRemove(id: string) {
+    setError(null)
+    try {
+      if (window.aetherion?.accounts) {
+        setState(await window.aetherion.accounts.remove(id))
+      } else {
+        setState((prev) => removeAccountLib(prev, id))
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao remover conta.")
+    }
   }
 
-  function handleSelect(id: string) {
-    setState((prev) => setActiveAccount(prev, id))
+  async function handleSelect(id: string) {
+    setError(null)
+    try {
+      if (window.aetherion?.accounts) {
+        setState(await window.aetherion.accounts.setActive(id))
+      } else {
+        setState((prev) => setActiveAccount(prev, id))
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao selecionar conta.")
+    }
   }
 
   function handleMicrosoftStub() {

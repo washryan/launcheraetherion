@@ -21,6 +21,10 @@ export function WindowFrame({
   children: React.ReactNode
   className?: string
 }) {
+  const minimize = () => window.aetherion?.window.minimize()
+  const maximize = () => window.aetherion?.window.maximize()
+  const close = () => window.aetherion?.window.close()
+
   return (
     <div className="min-h-dvh w-full flex items-center justify-center p-6 bg-background">
       <div
@@ -44,13 +48,13 @@ export function WindowFrame({
             </span>
           </div>
           <div className="flex items-center gap-1">
-            <WindowButton aria-label="Minimizar">
+            <WindowButton aria-label="Minimizar" onClick={minimize}>
               <Minus className="size-3.5" />
             </WindowButton>
-            <WindowButton aria-label="Maximizar">
+            <WindowButton aria-label="Maximizar" onClick={maximize}>
               <Square className="size-3" />
             </WindowButton>
-            <WindowButton aria-label="Fechar" variant="danger">
+            <WindowButton aria-label="Fechar" variant="danger" onClick={close}>
               <X className="size-3.5" />
             </WindowButton>
           </div>

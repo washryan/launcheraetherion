@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Cog, Disc, Globe, LogIn, Play, Youtube } from "lucide-react"
@@ -14,15 +14,29 @@ import {
   MOCK_SERVER_STATUS,
 } from "@/lib/launcher/mock-data"
 import { simulateLaunch } from "@/lib/launcher/launch-simulator"
-import type { LaunchProgress } from "@/lib/launcher/types"
+import type { Account, LaunchProgress } from "@/lib/launcher/types"
 import { publicAssetPath } from "@/lib/public-path"
 import { AetherionMark } from "./aetherion-mark"
 import { LaunchProgressOverlay } from "./launch-progress"
 
 export function Dashboard() {
-  const activeAccount = MOCK_ACCOUNTS[0]
+  const [activeAccount, setActiveAccount] = useState<Account>(MOCK_ACCOUNTS[0])
   const [progress, setProgress] = useState<LaunchProgress | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    if (!window.aetherion?.accounts) return
+
+    window.aetherion.accounts
+      .list()
+      .then((state) => {
+        const active =
+          state.accounts.find((account: Account) => account.id === state.activeId) ??
+          state.accounts[0]
+        if (active) setActiveAccount(active)
+      })
+      .catch((err) => console.warn("[aetherion] failed to load account", err))
+  }, [])
 
   // Fase 5 (Electron): esse handler chama window.aetherion.launch({ ... })
   // e escuta os mesmos eventos `LaunchProgress`. Aqui usamos o simulador
