@@ -47,6 +47,24 @@ declare global {
         }>
         openInstanceFolder: () => Promise<{ ok: boolean }>
       }
+      java: {
+        detect: () => Promise<{
+          totalRamMb: number
+          java: {
+            path: string
+            major: number
+            version: string
+          } | null
+        }>
+        chooseExecutable: () => Promise<{
+          settings: LauncherSettings
+          java: {
+            path: string
+            major: number
+            version: string
+          }
+        } | null>
+      }
     }
   }
 }

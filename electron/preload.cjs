@@ -29,4 +29,8 @@ contextBridge.exposeInMainWorld("aetherion", {
     getPaths: () => ipcRenderer.invoke("settings:getPaths"),
     openInstanceFolder: () => ipcRenderer.invoke("settings:openInstanceFolder"),
   },
+  java: {
+    detect: () => ipcRenderer.invoke("java:detect"),
+    chooseExecutable: () => ipcRenderer.invoke("java:chooseExecutable"),
+  },
 })

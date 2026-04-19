@@ -1,9 +1,10 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron")
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron")
 const { spawn } = require("node:child_process")
 const crypto = require("node:crypto")
 const fsSync = require("node:fs")
 const fs = require("node:fs/promises")
 const { once } = require("node:events")
+const os = require("node:os")
 const path = require("node:path")
 
 const isDev = !app.isPackaged
@@ -47,7 +48,7 @@ const DEFAULT_SETTINGS = {
   },
   java: {
     minRamMb: 4096,
-    maxRamMb: 4096,
+    maxRamMb: 8192,
     executablePath: "",
     jvmArgs: "",
     autoDownloadRuntime: true,
@@ -187,6 +188,41 @@ ipcMain.handle("settings:openInstanceFolder", async () => {
   const error = await shell.openPath(settings.minecraft.gameDirectory)
   if (error) throw new Error(error)
   return { ok: true }
+})
+ipcMain.handle("java:detect", async () => {
+  const settings = await readLauncherSettings()
+  const java = await resolveJavaForSettings(settings.java, 17, 17)
+  return {
+    totalRamMb: systemRamMb(),
+    java,
+  }
+})
+ipcMain.handle("java:chooseExecutable", async () => {
+  const result = await dialog.showOpenDialog(mainWindow || undefined, {
+    title: "Escolher Java",
+    properties: ["openFile"],
+    filters:
+      process.platform === "win32"
+        ? [{ name: "Java", extensions: ["exe"] }]
+        : [{ name: "Java", extensions: ["*"] }],
+  })
+  if (result.canceled || !result.filePaths[0]) return null
+
+  const java = await inspectJava(result.filePaths[0])
+  if (!java || java.major < 17) {
+    throw new Error("Selecione um Java 17 ou superior.")
+  }
+
+  const settings = await readLauncherSettings()
+  const next = sanitizeLauncherSettings({
+    ...settings,
+    java: {
+      ...settings.java,
+      executablePath: result.filePaths[0],
+    },
+  })
+  await writeLauncherSettings(next)
+  return { settings: next, java }
 })
 
 ipcMain.handle("launch:start", async (_event, args) => {
@@ -341,6 +377,14 @@ function sanitizeLauncherSettings(value) {
   )
   const closeOnLaunch = Boolean(minecraft.closeOnLaunch)
   const instanceId = DEFAULT_MANIFEST.instanceId || "aetherion-main"
+  const totalRam = systemRamMb()
+  const minRamMb = clampNumber(java.minRamMb, 512, totalRam, DEFAULT_SETTINGS.java.minRamMb)
+  const maxRamMb = clampNumber(
+    java.maxRamMb,
+    1024,
+    totalRam,
+    Math.min(DEFAULT_SETTINGS.java.maxRamMb, totalRam),
+  )
 
   return {
     minecraft: {
@@ -358,8 +402,8 @@ function sanitizeLauncherSettings(value) {
           : instancePath(instanceId),
     },
     java: {
-      minRamMb: clampNumber(java.minRamMb, 512, 131072, DEFAULT_SETTINGS.java.minRamMb),
-      maxRamMb: clampNumber(java.maxRamMb, 512, 131072, DEFAULT_SETTINGS.java.maxRamMb),
+      minRamMb: Math.min(minRamMb, maxRamMb),
+      maxRamMb,
       executablePath: typeof java.executablePath === "string" ? java.executablePath : "",
       jvmArgs: typeof java.jvmArgs === "string" ? java.jvmArgs : "",
       autoDownloadRuntime:
@@ -377,6 +421,10 @@ function sanitizeLauncherSettings(value) {
       telemetry: Boolean(launcher.telemetry),
     },
   }
+}
+
+function systemRamMb() {
+  return Math.max(1024, Math.floor(os.totalmem() / 1024 / 1024))
 }
 
 function settingsPath() {
@@ -444,7 +492,13 @@ async function runUpdater(args, signal) {
     await executeUpdatePlan(root, plan, signal)
   }
 
-  const installedForgeSha = await installForgeIfNeeded(root, manifest, localState, signal)
+  const installedForgeSha = await installForgeIfNeeded(
+    root,
+    manifest,
+    localState,
+    settings.java,
+    signal,
+  )
 
   const nextState = {
     instanceId,
@@ -499,6 +553,7 @@ function normalizeLaunchArgs(args, settings) {
     autoConnectServer: Boolean(minecraft.autoConnectServer),
     detachProcess: Boolean(minecraft.detachProcess),
     closeOnLaunch: Boolean(minecraft.closeOnLaunch),
+    java: settings.java,
   }
 }
 
@@ -519,7 +574,8 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
     throw new Error(`Perfil ${profileId} nao informa mainClass para iniciar o Minecraft.`)
   }
   const account = await getLaunchAccount(args?.accountId)
-  const java = await findJava(
+  const java = await resolveJavaForSettings(
+    args?.java,
     manifest.java?.minMajor || 17,
     manifest.java?.recommendedMajor || manifest.java?.minMajor || 17,
   )
@@ -561,7 +617,12 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
     classpath_separator: path.delimiter,
     classpath: classpathEntries.join(path.delimiter),
   }
-  const memoryArgs = ["-Xms1G", "-Xmx4G"]
+  const javaSettings = sanitizeLauncherSettings({ java: args?.java }).java
+  const memoryArgs = [
+    `-Xms${javaSettings.minRamMb}M`,
+    `-Xmx${javaSettings.maxRamMb}M`,
+    ...parseJvmArgs(javaSettings.jvmArgs),
+  ]
   const jvmArgs = [
     ...memoryArgs,
     ...resolveArguments(merged.arguments.jvm, variables),
@@ -1183,7 +1244,7 @@ function mavenPathFromName(name) {
   return `${group.replace(/\./g, "/")}/${artifact}/${version}/${artifact}-${version}${classifier}.${extension}`
 }
 
-async function installForgeIfNeeded(root, manifest, localState, signal) {
+async function installForgeIfNeeded(root, manifest, localState, javaSettings, signal) {
   const targetSha = manifest.forge.sha256
   const installerPath = safeResolve(
     root,
@@ -1212,7 +1273,8 @@ async function installForgeIfNeeded(root, manifest, localState, signal) {
     phase: "checking-java",
     message: "Procurando Java 17 no sistema...",
   })
-  const java = await findJava(
+  const java = await resolveJavaForSettings(
+    javaSettings,
     manifest.java?.minMajor || 17,
     manifest.java?.recommendedMajor || manifest.java?.minMajor || 17,
   )
@@ -1476,6 +1538,28 @@ async function executeUpdatePlan(root, plan, signal) {
   })
 }
 
+async function resolveJavaForSettings(javaSettings, minMajor, preferredMajor = minMajor) {
+  const configuredPath =
+    typeof javaSettings?.executablePath === "string" && javaSettings.executablePath.trim()
+      ? javaSettings.executablePath.trim()
+      : null
+
+  if (configuredPath) {
+    const configured = await inspectJava(configuredPath)
+    if (!configured) {
+      throw new Error(`Java configurado nao foi reconhecido: ${configuredPath}`)
+    }
+    if (configured.major < minMajor) {
+      throw new Error(
+        `Java configurado precisa ser ${minMajor}+; encontrado ${configured.major} em ${configuredPath}`,
+      )
+    }
+    return configured
+  }
+
+  return findJava(minMajor, preferredMajor)
+}
+
 async function findJava(minMajor, preferredMajor = minMajor) {
   const candidates = uniqueTruthy([
     process.env.AETHERION_JAVA_PATH,
@@ -1522,6 +1606,43 @@ async function findJava(minMajor, preferredMajor = minMajor) {
       return Math.abs(a.major - preferredMajor) - Math.abs(b.major - preferredMajor)
     })[0] || null
   )
+}
+
+function parseJvmArgs(value) {
+  const text = String(value || "").trim()
+  if (!text) return []
+
+  const args = []
+  let current = ""
+  let quote = null
+  let escaping = false
+
+  for (const char of text) {
+    if (escaping) {
+      current += char
+      escaping = false
+      continue
+    }
+    if (char === "\\") {
+      escaping = true
+      continue
+    }
+    if ((char === '"' || char === "'") && (!quote || quote === char)) {
+      quote = quote ? null : char
+      continue
+    }
+    if (/\s/.test(char) && !quote) {
+      if (current) {
+        args.push(current)
+        current = ""
+      }
+      continue
+    }
+    current += char
+  }
+
+  if (current) args.push(current)
+  return args.filter((arg) => !/^-[xX]m[sx]/.test(arg))
 }
 
 function javaExecutableName() {
