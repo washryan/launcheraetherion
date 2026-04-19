@@ -8,6 +8,10 @@ const path = require("node:path")
 
 const isDev = !app.isPackaged
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,16}$/
+const LAUNCHER_NAME = "AetherionLauncher"
+const LAUNCHER_VERSION = "0.1.0"
+const MOJANG_VERSION_MANIFEST =
+  "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 const LAUNCH_TARGET = {
   minecraft: "1.19.2",
   forge: "43.5.0",
@@ -299,16 +303,336 @@ async function runUpdater(args, signal) {
   }
   await writeInstanceState(root, nextState)
 
+  const launchPlan = await buildMinecraftLaunchPlan(root, manifest, args, signal)
+
   emitLaunchProgress({
     phase: "running",
-    message: "Forge pronto. Launch do Minecraft entra na proxima fase.",
+    message: launchPlan.ready
+      ? "LaunchPlan pronto. Minecraft/Forge pode ser iniciado na proxima fase."
+      : `LaunchPlan gerado, mas ainda faltam ${launchPlan.missing.length} arquivo(s).`,
     totalBytes: plan.totalBytes,
     loadedBytes: plan.totalBytes,
     filesDone: plan.downloadCount,
     filesTotal: plan.downloadCount,
   })
 
-  return { minecraft: manifest.minecraft, forge: manifest.forge.version }
+  return {
+    minecraft: manifest.minecraft,
+    forge: manifest.forge.version,
+    launchPlan: summarizeLaunchPlan(launchPlan),
+  }
+}
+
+async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
+  emitLaunchProgress({
+    phase: "launching",
+    message: "Montando LaunchPlan do Minecraft/Forge...",
+  })
+
+  const profileId =
+    manifest.forge.installedProfile || `${manifest.minecraft}-forge-${manifest.forge.version}`
+  const forgeProfilePath = path.join(root, "versions", profileId, `${profileId}.json`)
+  const forgeProfile = await readJsonFile(forgeProfilePath)
+  const parentId = forgeProfile.inheritsFrom || manifest.minecraft
+  const parentProfile = await ensureMinecraftVersionJson(root, parentId, signal)
+  const merged = mergeVersionProfiles(parentProfile, forgeProfile)
+  if (!merged.mainClass) {
+    throw new Error(`Perfil ${profileId} nao informa mainClass para iniciar o Minecraft.`)
+  }
+  const account = await getLaunchAccount(args?.accountId)
+  const java = await findJava(
+    manifest.java?.minMajor || 17,
+    manifest.java?.recommendedMajor || manifest.java?.minMajor || 17,
+  )
+
+  if (!java) {
+    throw new Error(
+      "Java 17 nao encontrado. Instale o Eclipse Temurin/OpenJDK 17 ou configure JAVA_HOME.",
+    )
+  }
+
+  const libraryDirectory = path.join(root, "libraries")
+  const assetsRoot = path.join(root, "assets")
+  const nativesDirectory = path.join(root, "natives", profileId)
+  const clientJar = path.join(root, "versions", parentId, `${parentId}.jar`)
+  const libraryPlan = collectLibraries(root, merged.libraries)
+  const classpathEntries = [...libraryPlan.classpath, clientJar]
+  const variables = {
+    auth_player_name: account.username,
+    version_name: profileId,
+    game_directory: root,
+    assets_root: assetsRoot,
+    assets_index_name: parentProfile.assetIndex?.id || parentId,
+    auth_uuid: account.uuid.replace(/-/g, ""),
+    auth_access_token: "0",
+    clientid: "",
+    auth_xuid: "",
+    user_type: account.type === "microsoft" ? "msa" : "legacy",
+    version_type: forgeProfile.type || parentProfile.type || "release",
+    natives_directory: nativesDirectory,
+    launcher_name: LAUNCHER_NAME,
+    launcher_version: LAUNCHER_VERSION,
+    library_directory: libraryDirectory,
+    classpath_separator: path.delimiter,
+    classpath: classpathEntries.join(path.delimiter),
+  }
+  const memoryArgs = ["-Xms1G", "-Xmx4G"]
+  const jvmArgs = [
+    ...memoryArgs,
+    ...resolveArguments(merged.arguments.jvm, variables),
+  ].filter(Boolean)
+  const gameArgs = resolveArguments(merged.arguments.game, variables)
+  const commandArgs = [...jvmArgs, merged.mainClass, ...gameArgs]
+  const assetIndexPath = path.join(assetsRoot, "indexes", `${variables.assets_index_name}.json`)
+  const missing = [
+    ...libraryPlan.missing,
+    ...libraryPlan.missingNatives,
+    ...(fsSync.existsSync(clientJar) ? [] : [toPosix(path.relative(root, clientJar))]),
+    ...(fsSync.existsSync(assetIndexPath)
+      ? []
+      : [toPosix(path.relative(root, assetIndexPath))]),
+  ]
+
+  const launchPlan = {
+    ready: missing.length === 0,
+    root,
+    profileId,
+    parentId,
+    javaPath: java.path,
+    javaVersion: java.version,
+    mainClass: merged.mainClass,
+    classpathEntries,
+    nativeArtifacts: libraryPlan.nativeArtifacts,
+    nativesDirectory,
+    jvmArgs,
+    gameArgs,
+    commandArgs,
+    missing,
+    assetIndex: {
+      id: variables.assets_index_name,
+      path: assetIndexPath,
+      url: parentProfile.assetIndex?.url || null,
+      sha1: parentProfile.assetIndex?.sha1 || null,
+      size: parentProfile.assetIndex?.size || null,
+    },
+  }
+
+  console.log("[aetherion] launch plan", summarizeLaunchPlan(launchPlan))
+
+  emitLaunchProgress({
+    phase: "launching",
+    message: launchPlan.ready
+      ? `LaunchPlan pronto: ${profileId} com ${libraryPlan.classpath.length} bibliotecas.`
+      : `LaunchPlan pronto; faltam ${missing.length} arquivo(s) antes do spawn.`,
+  })
+
+  return launchPlan
+}
+
+function summarizeLaunchPlan(plan) {
+  return {
+    ready: plan.ready,
+    profileId: plan.profileId,
+    parentId: plan.parentId,
+    javaPath: plan.javaPath,
+    javaVersion: plan.javaVersion,
+    mainClass: plan.mainClass,
+    classpathEntries: plan.classpathEntries.length,
+    nativeArtifacts: plan.nativeArtifacts.length,
+    jvmArgs: plan.jvmArgs.length,
+    gameArgs: plan.gameArgs.length,
+    commandArgs: plan.commandArgs.length,
+    assetIndex: plan.assetIndex.id,
+    missing: plan.missing.slice(0, 20),
+    missingCount: plan.missing.length,
+  }
+}
+
+async function getLaunchAccount(accountId) {
+  const state = await readAccountsState()
+  const account =
+    state.accounts.find((candidate) => candidate.id === accountId) ||
+    state.accounts.find((candidate) => candidate.id === state.activeId)
+
+  if (!account) {
+    throw new Error("Nenhuma conta local ativa encontrada para iniciar o Minecraft.")
+  }
+
+  return account
+}
+
+async function ensureMinecraftVersionJson(root, versionId, signal) {
+  const versionPath = path.join(root, "versions", versionId, `${versionId}.json`)
+  if (fsSync.existsSync(versionPath)) return readJsonFile(versionPath)
+
+  emitLaunchProgress({
+    phase: "fetching-manifest",
+    message: `Baixando metadados vanilla ${versionId} da Mojang...`,
+  })
+
+  const manifest = await fetchJson(MOJANG_VERSION_MANIFEST, signal)
+  const version = manifest.versions?.find((candidate) => candidate.id === versionId)
+  if (!version?.url) {
+    throw new Error(`Versao Minecraft ${versionId} nao encontrada no manifest da Mojang.`)
+  }
+
+  const profile = await fetchJson(version.url, signal)
+  await fs.mkdir(path.dirname(versionPath), { recursive: true })
+  await fs.writeFile(versionPath, `${JSON.stringify(profile, null, 2)}\n`, "utf8")
+  return profile
+}
+
+async function fetchJson(url, signal) {
+  throwIfAborted(signal)
+  const response = await fetch(url, {
+    signal,
+    headers: { Accept: "application/json" },
+    redirect: "follow",
+  })
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} ${response.statusText} em ${url}`)
+  }
+  return response.json()
+}
+
+async function readJsonFile(filePath) {
+  const raw = await fs.readFile(filePath, "utf8")
+  return JSON.parse(raw)
+}
+
+function mergeVersionProfiles(parent, child) {
+  return {
+    mainClass: child.mainClass || parent.mainClass,
+    type: child.type || parent.type,
+    libraries: [...(parent.libraries || []), ...(child.libraries || [])],
+    arguments: {
+      jvm: [
+        ...normalizeArguments(parent.arguments?.jvm),
+        ...normalizeArguments(child.arguments?.jvm),
+      ],
+      game: [
+        ...normalizeArguments(parent.arguments?.game || parent.minecraftArguments),
+        ...normalizeArguments(child.arguments?.game || child.minecraftArguments),
+      ],
+    },
+  }
+}
+
+function normalizeArguments(value) {
+  if (!value) return []
+  if (Array.isArray(value)) return value
+  if (typeof value === "string") return value.split(/\s+/).filter(Boolean)
+  return []
+}
+
+function collectLibraries(root, libraries) {
+  const classpath = []
+  const nativeArtifacts = []
+  const missing = []
+  const missingNatives = []
+
+  for (const library of libraries || []) {
+    if (!isAllowedByRules(library.rules)) continue
+
+    const artifactPath = library.downloads?.artifact?.path || mavenPathFromName(library.name)
+    if (artifactPath) {
+      const absolute = path.join(root, "libraries", ...artifactPath.split("/"))
+      classpath.push(absolute)
+      if (!fsSync.existsSync(absolute)) missing.push(toPosix(path.relative(root, absolute)))
+    }
+
+    const nativeClassifier = nativeClassifierFor(library)
+    const native = nativeClassifier ? library.downloads?.classifiers?.[nativeClassifier] : null
+    if (native?.path) {
+      const absolute = path.join(root, "libraries", ...native.path.split("/"))
+      nativeArtifacts.push({
+        path: absolute,
+        exclude: library.extract?.exclude || [],
+      })
+      if (!fsSync.existsSync(absolute)) {
+        missingNatives.push(toPosix(path.relative(root, absolute)))
+      }
+    }
+  }
+
+  return { classpath, nativeArtifacts, missing, missingNatives }
+}
+
+function resolveArguments(args, variables) {
+  const resolved = []
+
+  for (const arg of args || []) {
+    if (typeof arg === "string") {
+      resolved.push(applyVariables(arg, variables))
+      continue
+    }
+
+    if (!arg || typeof arg !== "object") continue
+    if (!isAllowedByRules(arg.rules)) continue
+
+    for (const value of flattenArgumentValue(arg.value)) {
+      resolved.push(applyVariables(value, variables))
+    }
+  }
+
+  return resolved
+}
+
+function flattenArgumentValue(value) {
+  if (Array.isArray(value)) return value.flatMap(flattenArgumentValue)
+  if (typeof value === "string") return [value]
+  return []
+}
+
+function applyVariables(value, variables) {
+  return String(value).replace(/\$\{([^}]+)\}/g, (_match, key) => {
+    const replacement = variables[key]
+    return replacement === undefined || replacement === null ? "" : String(replacement)
+  })
+}
+
+function nativeClassifierFor(library) {
+  const osName = getMinecraftOsName()
+  const classifier = library.natives?.[osName]
+  if (!classifier) return null
+  return classifier.replace("${arch}", process.arch === "x64" ? "64" : "32")
+}
+
+function isAllowedByRules(rules, options = {}) {
+  if (!Array.isArray(rules) || rules.length === 0) return true
+
+  let allowed = false
+  for (const rule of rules) {
+    if (!ruleMatches(rule, options)) continue
+    allowed = rule.action === "allow"
+  }
+  return allowed
+}
+
+function ruleMatches(rule, options) {
+  if (rule.os) {
+    if (rule.os.name && rule.os.name !== getMinecraftOsName()) return false
+    if (rule.os.arch && rule.os.arch !== process.arch) return false
+  }
+
+  if (rule.features && !options.hasFeatures) return false
+  return true
+}
+
+function getMinecraftOsName() {
+  if (process.platform === "win32") return "windows"
+  if (process.platform === "darwin") return "osx"
+  return "linux"
+}
+
+function mavenPathFromName(name) {
+  if (!name || typeof name !== "string") return null
+  const [group, artifact, version, classifierPart] = name.split(":")
+  if (!group || !artifact || !version) return null
+
+  const classifier = classifierPart ? `-${classifierPart.replace(/^@/, "")}` : ""
+  const extension = classifierPart?.startsWith("@") ? classifierPart.slice(1) : "jar"
+  return `${group.replace(/\./g, "/")}/${artifact}/${version}/${artifact}-${version}${classifier}.${extension}`
 }
 
 async function installForgeIfNeeded(root, manifest, localState, signal) {

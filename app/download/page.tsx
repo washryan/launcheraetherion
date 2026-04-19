@@ -4,11 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { AetherionMark } from "@/components/launcher/aetherion-mark"
 import { MOCK_MANIFEST } from "@/lib/launcher/mock-data"
-import {
-  AETHERION_HOSTING,
-  launcherDownloadUrl,
-  releasePageUrl,
-} from "@/lib/launcher/github-releases"
+import { launcherDownloadUrl, releasePageUrl } from "@/lib/launcher/github-releases"
 
 /**
  * Esta página é o "site" simples que pedem no objetivo.
@@ -18,10 +14,12 @@ import {
  */
 
 const LAUNCHER_VERSION = "0.1.0"
+const DOWNLOADS_READY = false
 const LAUNCHER_REPO = {
   owner: "washryan",
   repo: "launcheraetherion",
 }
+const LAUNCHER_RELEASES_URL = `https://github.com/${LAUNCHER_REPO.owner}/${LAUNCHER_REPO.repo}/releases`
 
 const DOWNLOADS = [
   {
@@ -43,6 +41,14 @@ const DOWNLOADS = [
 ]
 
 export default function DownloadPage() {
+  const windowsDownloadHref = DOWNLOADS_READY
+    ? launcherDownloadUrl(
+        LAUNCHER_VERSION,
+        `Aetherion-Launcher-Setup-${LAUNCHER_VERSION}.exe`,
+        LAUNCHER_REPO,
+      )
+    : LAUNCHER_RELEASES_URL
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
@@ -93,15 +99,9 @@ export default function DownloadPage() {
 
         <div className="mt-10 flex items-center justify-center gap-3">
           <Button asChild size="lg" className="h-12 px-6 gap-2 aetherion-gold-glow">
-            <a
-              href={launcherDownloadUrl(
-                LAUNCHER_VERSION,
-                `Aetherion-Launcher-Setup-${LAUNCHER_VERSION}.exe`,
-                LAUNCHER_REPO,
-              )}
-            >
+            <a href={windowsDownloadHref}>
               <Download className="size-4" />
-              Baixar para Windows
+              {DOWNLOADS_READY ? "Baixar para Windows" : "Instalador em preparacao"}
             </a>
           </Button>
           <Button
@@ -130,8 +130,14 @@ export default function DownloadPage() {
           {DOWNLOADS.map((d) => (
             <a
               key={d.os}
-              href={launcherDownloadUrl(LAUNCHER_VERSION, d.filename, LAUNCHER_REPO)}
-              className="group rounded-lg border border-border/50 bg-card/40 p-5 hover:border-primary/40 transition"
+              href={
+                DOWNLOADS_READY
+                  ? launcherDownloadUrl(LAUNCHER_VERSION, d.filename, LAUNCHER_REPO)
+                  : LAUNCHER_RELEASES_URL
+              }
+              aria-disabled={!DOWNLOADS_READY}
+              data-disabled={!DOWNLOADS_READY}
+              className="group rounded-lg border border-border/50 bg-card/40 p-5 hover:border-primary/40 transition data-[disabled=true]:opacity-75"
             >
               <div className="flex items-center justify-between mb-3">
                 <p className="font-serif text-lg">{d.os}</p>
@@ -147,7 +153,7 @@ export default function DownloadPage() {
               <p className="mt-1 text-[11px] text-muted-foreground">{d.arch}</p>
               <div className="mt-4 flex items-center gap-1.5 text-xs text-primary group-hover:gap-3 transition-all">
                 <Download className="size-3.5" />
-                Baixar
+                {DOWNLOADS_READY ? "Baixar" : "Aguardando build"}
               </div>
             </a>
           ))}
