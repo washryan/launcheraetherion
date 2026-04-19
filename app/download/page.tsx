@@ -1,65 +1,47 @@
-import Link from "next/link"
-import { ArrowRight, Download, MessageCircle, Package, Shield } from "lucide-react"
+import {
+  CheckCircle2,
+  Download,
+  MessageCircle,
+  Package,
+  Server,
+  Settings,
+  Shield,
+} from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { AetherionMark } from "@/components/launcher/aetherion-mark"
 import { MOCK_MANIFEST } from "@/lib/launcher/mock-data"
 import { launcherDownloadUrl, releasePageUrl } from "@/lib/launcher/github-releases"
 
-/**
- * Esta página é o "site" simples que pedem no objetivo.
- * Quando o launcher for publicado, esta rota pode ser exportada via
- *   `next build && next export`
- * e o conteúdo de /out/download virar a home do GitHub Pages.
- */
-
 const LAUNCHER_VERSION = "0.1.0"
-const DOWNLOADS_READY = false
+const WINDOWS_INSTALLER_FILENAME = `Aetherion Launcher Setup ${LAUNCHER_VERSION}.exe`
 const LAUNCHER_REPO = {
   owner: "washryan",
   repo: "launcheraetherion",
 }
-const LAUNCHER_RELEASES_URL = `https://github.com/${LAUNCHER_REPO.owner}/${LAUNCHER_REPO.repo}/releases`
 
-const DOWNLOADS = [
-  {
-    os: "Windows",
-    filename: `Aetherion-Launcher-Setup-${LAUNCHER_VERSION}.exe`,
-    arch: "x64",
-    recommended: true,
-  },
-  {
-    os: "Linux",
-    filename: `Aetherion-Launcher-${LAUNCHER_VERSION}.AppImage`,
-    arch: "x64",
-  },
-  {
-    os: "macOS",
-    filename: `Aetherion-Launcher-${LAUNCHER_VERSION}.dmg`,
-    arch: "arm64 / x64",
-  },
-]
+const WINDOWS_DOWNLOAD_URL = launcherDownloadUrl(
+  LAUNCHER_VERSION,
+  WINDOWS_INSTALLER_FILENAME,
+  LAUNCHER_REPO,
+)
+const LAUNCHER_RELEASE_URL = releasePageUrl(LAUNCHER_VERSION, LAUNCHER_REPO)
+const MODPACK_RELEASE_URL = releasePageUrl(MOCK_MANIFEST.version, LAUNCHER_REPO)
+const REQUIRED_MODS = MOCK_MANIFEST.files.filter((file) => file.type === "required")
+const OPTIONAL_MODS = MOCK_MANIFEST.files.filter((file) => file.type === "optional")
+const FEATURED_MODS = REQUIRED_MODS.slice(0, 12)
 
 export default function DownloadPage() {
-  const windowsDownloadHref = DOWNLOADS_READY
-    ? launcherDownloadUrl(
-        LAUNCHER_VERSION,
-        `Aetherion-Launcher-Setup-${LAUNCHER_VERSION}.exe`,
-        LAUNCHER_REPO,
-      )
-    : LAUNCHER_RELEASES_URL
-
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Header */}
       <header className="border-b border-border/40">
-        <div className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between gap-5">
+          <div className="flex items-center gap-3 min-w-0">
             <AetherionMark size={36} />
-            <div>
+            <div className="min-w-0">
               <p className="font-serif text-lg tracking-wide">Aetherion</p>
               <p className="text-[10px] text-muted-foreground uppercase tracking-[0.2em]">
-                Reino Etéreo
+                Reino Etereo
               </p>
             </div>
           </div>
@@ -72,7 +54,7 @@ export default function DownloadPage() {
               Discord
             </a>
             <a
-              href={releasePageUrl(MOCK_MANIFEST.version)}
+              href={LAUNCHER_RELEASE_URL}
               className="text-muted-foreground hover:text-foreground transition"
             >
               Releases
@@ -81,123 +63,132 @@ export default function DownloadPage() {
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="max-w-5xl mx-auto px-6 py-20 text-center">
+      <section className="max-w-5xl mx-auto px-6 py-16 md:py-20">
         <Badge
           variant="outline"
           className="mb-6 text-[10px] uppercase tracking-[0.25em] border-primary/40 text-primary"
         >
-          Servidor {MOCK_MANIFEST.minecraft} • Forge
+          Windows x64 • Minecraft {MOCK_MANIFEST.minecraft} • Forge {MOCK_MANIFEST.forge.version}
         </Badge>
-        <h1 className="font-serif text-5xl md:text-6xl tracking-[0.1em] text-balance">
-          AETHERION
-        </h1>
-        <p className="mt-4 text-lg text-muted-foreground max-w-xl mx-auto text-balance">
-          Launcher oficial do reino etéreo. Um clique e o modpack inteiro fica atualizado,
-          verificado por hash e pronto para jogar.
-        </p>
+        <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+          <div>
+            <h1 className="font-serif text-5xl md:text-6xl tracking-[0.1em] text-balance">
+              AETHERION
+            </h1>
+            <p className="mt-5 text-lg text-muted-foreground max-w-2xl text-balance">
+              Baixe o launcher oficial para Windows, entre com sua conta local e jogue com
+              Forge, mods, shaders, Java e integridade preparados pelo Aetherion.
+            </p>
 
-        <div className="mt-10 flex items-center justify-center gap-3">
-          <Button asChild size="lg" className="h-12 px-6 gap-2 aetherion-gold-glow">
-            <a href={windowsDownloadHref}>
-              <Download className="size-4" />
-              {DOWNLOADS_READY ? "Baixar para Windows" : "Instalador em preparacao"}
-            </a>
-          </Button>
-          <Button
-            asChild
-            variant="outline"
-            size="lg"
-            className="h-12 px-5 gap-2 bg-transparent"
-          >
-            <Link href="/launcher">
-              Abrir preview da UI
-              <ArrowRight className="size-4" />
-            </Link>
-          </Button>
+            <div className="mt-10 flex flex-col sm:flex-row gap-3">
+              <Button asChild size="lg" className="h-12 px-6 gap-2 aetherion-gold-glow">
+                <a href={WINDOWS_DOWNLOAD_URL}>
+                  <Download className="size-4" />
+                  Baixar launcher para Windows
+                </a>
+              </Button>
+              <Button
+                asChild
+                variant="outline"
+                size="lg"
+                className="h-12 px-5 bg-transparent"
+              >
+                <a href={LAUNCHER_RELEASE_URL}>Ver release</a>
+              </Button>
+            </div>
+
+            <p className="mt-4 text-xs text-muted-foreground">
+              Launcher v{LAUNCHER_VERSION} • Modpack v{MOCK_MANIFEST.version} •{" "}
+              {WINDOWS_INSTALLER_FILENAME}
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-border/50 bg-card/40 p-5">
+            <p className="font-serif text-xl tracking-wide">Download Windows</p>
+            <div className="mt-5 grid gap-3 text-sm">
+              <DownloadRow label="Sistema" value="Windows 10/11 x64" />
+              <DownloadRow label="Arquivo" value={WINDOWS_INSTALLER_FILENAME} />
+              <DownloadRow label="Instalador" value="NSIS, atalho e desinstalador" />
+              <DownloadRow label="Modpack" value={`${REQUIRED_MODS.length} obrigatorios`} />
+              <DownloadRow label="Opcionais" value={`${OPTIONAL_MODS.length} selecionaveis`} />
+            </div>
+          </div>
         </div>
-
-        <p className="mt-4 text-xs text-muted-foreground">
-          Launcher v{LAUNCHER_VERSION} • Modpack v{MOCK_MANIFEST.version} •{" "}
-          {MOCK_MANIFEST.publishedAt && new Date(MOCK_MANIFEST.publishedAt).toLocaleDateString("pt-BR")}
-        </p>
       </section>
 
-      {/* Downloads por OS */}
-      <section className="max-w-5xl mx-auto px-6 pb-20">
-        <h2 className="font-serif text-2xl tracking-wide mb-6">Downloads</h2>
-        <div className="grid gap-3 md:grid-cols-3">
-          {DOWNLOADS.map((d) => (
-            <a
-              key={d.os}
-              href={
-                DOWNLOADS_READY
-                  ? launcherDownloadUrl(LAUNCHER_VERSION, d.filename, LAUNCHER_REPO)
-                  : LAUNCHER_RELEASES_URL
-              }
-              aria-disabled={!DOWNLOADS_READY}
-              data-disabled={!DOWNLOADS_READY}
-              className="group rounded-lg border border-border/50 bg-card/40 p-5 hover:border-primary/40 transition data-[disabled=true]:opacity-75"
+      <section className="border-y border-border/40 bg-card/20">
+        <div className="max-w-5xl mx-auto px-6 py-14 grid gap-8 md:grid-cols-3">
+          <Feature
+            icon={<Shield className="size-5" />}
+            title="Integridade por SHA-256"
+            description="Arquivos do modpack sao conferidos antes do Minecraft iniciar."
+          />
+          <Feature
+            icon={<Settings className="size-5" />}
+            title="Configuracoes locais"
+            description="Resolucao, RAM, Java, logs, cache e pasta da instancia ficam no seu PC."
+          />
+          <Feature
+            icon={<Server className="size-5" />}
+            title="Servidor pronto"
+            description="A inicializacao pode conectar direto em left-fcc.gl.joinmc.link."
+          />
+        </div>
+      </section>
+
+      <section className="max-w-5xl mx-auto px-6 py-16">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-6">
+          <div>
+            <h2 className="font-serif text-2xl tracking-wide">Modpack Incluso</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Obrigatorios ficam travados; opcionais podem ser ligados nas configuracoes.
+            </p>
+          </div>
+          <a href={MODPACK_RELEASE_URL} className="text-sm text-primary hover:underline">
+            Assets do modpack
+          </a>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {FEATURED_MODS.map((mod) => (
+            <div key={mod.path} className="rounded-lg border border-border/50 bg-card/40 p-4">
+              <div className="flex items-start gap-3">
+                <Package className="size-4 text-primary mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{mod.name}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Obrigatorio</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {OPTIONAL_MODS.map((mod) => (
+            <Badge
+              key={mod.path}
+              variant="outline"
+              className="border-primary/30 text-primary bg-primary/5"
             >
-              <div className="flex items-center justify-between mb-3">
-                <p className="font-serif text-lg">{d.os}</p>
-                {d.recommended && (
-                  <Badge className="bg-primary/15 text-primary border-primary/30 hover:bg-primary/20">
-                    Recomendado
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs font-mono text-muted-foreground truncate">
-                {d.filename}
-              </p>
-              <p className="mt-1 text-[11px] text-muted-foreground">{d.arch}</p>
-              <div className="mt-4 flex items-center gap-1.5 text-xs text-primary group-hover:gap-3 transition-all">
-                <Download className="size-3.5" />
-                {DOWNLOADS_READY ? "Baixar" : "Aguardando build"}
-              </div>
-            </a>
+              {mod.name}
+            </Badge>
           ))}
         </div>
       </section>
 
-      {/* Features */}
-      <section className="border-t border-border/40 bg-card/20">
-        <div className="max-w-5xl mx-auto px-6 py-16 grid gap-8 md:grid-cols-3">
-          <Feature
-            icon={<Shield className="size-5" />}
-            title="Integridade por SHA-256"
-            description="Cada .jar é validado com hash antes de rodar. Se um arquivo é adulterado, o launcher rebaixa automaticamente."
-          />
-          <Feature
-            icon={<Package className="size-5" />}
-            title="Atualização incremental"
-            description="Só baixa o que mudou entre versões. Uma atualização grande raramente passa de 20 MB."
-          />
-          <Feature
-            icon={<Download className="size-5" />}
-            title="Distribuição gratuita"
-            description="Hospedagem 100% em GitHub Releases + GitHub Pages. Sem CDN paga, sem limites de tráfego."
-          />
-        </div>
-      </section>
-
-      {/* Changelog */}
       {MOCK_MANIFEST.changelog && (
-        <section className="max-w-5xl mx-auto px-6 py-16">
+        <section className="max-w-5xl mx-auto px-6 pb-16">
           <div className="flex items-baseline justify-between mb-6">
             <h2 className="font-serif text-2xl tracking-wide">Changelog</h2>
-            <a
-              href={releasePageUrl(MOCK_MANIFEST.version)}
-              className="text-sm text-primary hover:underline"
-            >
-              Ver no GitHub →
+            <a href={MODPACK_RELEASE_URL} className="text-sm text-primary hover:underline">
+              GitHub
             </a>
           </div>
           <div className="rounded-lg border border-border/50 bg-card/40 p-6">
             <p className="font-serif text-lg tracking-wide">
               v{MOCK_MANIFEST.version}{" "}
               <span className="text-muted-foreground text-sm font-sans">
-                • {MOCK_MANIFEST.publishedAt && new Date(MOCK_MANIFEST.publishedAt).toLocaleDateString("pt-BR")}
+                •{" "}
+                {MOCK_MANIFEST.publishedAt &&
+                  new Date(MOCK_MANIFEST.publishedAt).toLocaleDateString("pt-BR")}
               </span>
             </p>
             <pre className="mt-3 text-sm text-muted-foreground whitespace-pre-wrap font-sans leading-relaxed">
@@ -207,11 +198,10 @@ export default function DownloadPage() {
         </section>
       )}
 
-      {/* Footer */}
       <footer className="border-t border-border/40">
         <div className="max-w-5xl mx-auto px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-xs text-muted-foreground">
-            © 2026 Aetherion Network • Não afiliado à Mojang Studios
+            © 2026 Aetherion Network • Nao afiliado a Mojang Studios
           </p>
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <a
@@ -229,6 +219,18 @@ export default function DownloadPage() {
           </div>
         </div>
       </footer>
+    </div>
+  )
+}
+
+function DownloadRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-border/40 pb-3 last:border-0 last:pb-0">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-medium inline-flex items-start gap-2">
+        <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+        {value}
+      </span>
     </div>
   )
 }

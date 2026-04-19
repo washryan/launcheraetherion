@@ -165,7 +165,7 @@ export const MOCK_MANIFEST: Manifest = {
   instanceId: "aetherion-main",
   publishedAt: "2026-04-19T00:00:00Z",
   changelog:
-    "- Launcher Electron inicia Minecraft/Forge 1.19.2\n- Configuracoes de Java e Minecraft persistentes\n- Lista inicial de mods Aetherion cadastrada",
+    "- Launcher Electron inicia Minecraft/Forge 1.19.2\n- Forge, libraries, assets e mods sao preparados automaticamente\n- JEI e OptiFine ficam como opcionais selecionaveis\n- Configuracoes de Java, Minecraft, armazenamento, logs, cache e integridade persistentes",
 
   forge: {
     version: "43.5.0",
