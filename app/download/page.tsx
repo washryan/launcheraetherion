@@ -19,8 +19,8 @@ import {
 
 const LAUNCHER_VERSION = "0.1.0"
 const LAUNCHER_REPO = {
-  owner: AETHERION_HOSTING.owner,
-  repo: "aetherion-launcher",
+  owner: "washryan",
+  repo: "launcheraetherion",
 }
 
 const DOWNLOADS = [
