@@ -21,7 +21,6 @@ pack-v0.3/
       TerraBlender-forge-1.19.2-2.0.1.166.jar
     optional/
       jei-1.19.2-forge-11.8.1.1034.jar
-      OptiFine_1.19.2_HD_U_I2.jar
   config/
     seus-arquivos.toml
 ```
@@ -48,7 +47,8 @@ O script calcula:
 - `size` real.
 - URL de download para cada asset do GitHub Release `v0.3`.
 - `defaultEnabled: true` para JEI.
-- `defaultEnabled: false` para OptiFine.
+- OptiFine fica bloqueado por enquanto, porque crasha junto com Aether em
+  `aether.mixins.json:client.optifine.BossHealthOverlayMixin`.
 
 Se algum dos 45 obrigatorios estiver faltando, ele avisa. Para transformar aviso
 em erro, rode com `--strict`:
@@ -74,7 +74,27 @@ gh release create v0.3 `
 
 Tambem pode fazer pela interface web em GitHub > Releases > Draft a new release.
 
-## 4. Publicar o manifest
+## 4. Build para jogadores
+
+Antes de gerar o instalador, suba os assets no GitHub Release `v0.3`. O
+instalador nao carrega os `.jar` dentro dele; ele baixa os arquivos pelas URLs
+do manifest embutido.
+
+Depois rode:
+
+```powershell
+pnpm build:win
+```
+
+Esse comando:
+
+1. gera `public/manifest.json` com hashes reais;
+2. gera o site estatico em `out/`;
+3. empacota o Electron em `dist/`.
+
+O arquivo para distribuir fica em `dist/`, normalmente como instalador `.exe`.
+
+## 5. Publicar o manifest remoto
 
 Quando `manifest.json` estiver pronto, copie para `public/manifest.json` neste
 projeto e faca deploy pela Vercel:
@@ -93,14 +113,15 @@ https://SEU-PROJETO.vercel.app/manifest.json
 ```
 
 No launcher, va em Configuracoes > Launcher > Manifest do modpack e cole essa
-URL. Em desenvolvimento tambem funciona por variavel de ambiente:
+URL se quiser forcar um manifest remoto diferente do embutido. Em
+desenvolvimento tambem funciona por variavel de ambiente:
 
 ```powershell
 $env:AETHERION_MANIFEST_URL="https://SEU-PROJETO.vercel.app/manifest.json"
 pnpm dev:electron
 ```
 
-## 5. Como o updater aplica a atualizacao
+## 6. Como o updater aplica a atualizacao
 
 1. Baixa o manifest com cache-busting.
 2. Escaneia `forge/`, `mods/`, `config/`, `resourcepacks/` e `shaderpacks/`.
@@ -111,7 +132,7 @@ pnpm dev:electron
 7. Preserva `mods/dropin/`, `shaderpacks/` e `config/custom-*.toml`.
 8. Atualiza `instance-state.json`.
 
-## 6. Manifest exemplo
+## 7. Manifest exemplo
 
 `public/manifest.example.json` e apenas um exemplo gerado sem os arquivos reais.
 Ele tem hashes placeholders e tamanho `0`, entao nao deve ser usado como

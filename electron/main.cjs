@@ -304,6 +304,67 @@ ipcMain.handle("mods:openDropinFolder", async () => {
   return { ok: true }
 })
 
+ipcMain.handle("launcher:openDataDirectory", async () => {
+  const settings = await readLauncherSettings()
+  const target = settings.launcher.dataDirectory || app.getPath("userData")
+  await fs.mkdir(target, { recursive: true })
+  const error = await shell.openPath(target)
+  if (error) throw new Error(error)
+  return { ok: true }
+})
+ipcMain.handle("launcher:openLogsDirectory", async () => {
+  const root = await currentInstanceRoot()
+  const target = path.join(root, "logs")
+  await fs.mkdir(target, { recursive: true })
+  const error = await shell.openPath(target)
+  if (error) throw new Error(error)
+  return { ok: true }
+})
+ipcMain.handle("launcher:clearCache", async () => {
+  const root = await currentInstanceRoot()
+  const candidates = [
+    path.join(root, "natives"),
+    path.join(root, "cache"),
+    path.join(root, "tmp"),
+  ]
+  let removed = 0
+
+  for (const folder of candidates) {
+    if (!fsSync.existsSync(folder)) continue
+    await fs.rm(folder, { recursive: true, force: true })
+    removed++
+  }
+
+  for (const folder of ["forge", "mods", "config", "resourcepacks", "shaderpacks"]) {
+    const absolute = path.join(root, folder)
+    if (!fsSync.existsSync(absolute)) continue
+    const downloads = (await walkFiles(absolute)).filter((file) => file.endsWith(".download"))
+    for (const file of downloads) {
+      await fs.rm(file, { force: true })
+      removed++
+    }
+  }
+
+  return { removed }
+})
+ipcMain.handle("launcher:verifyIntegrity", async () => {
+  const settings = await readLauncherSettings()
+  const manifest = await loadManifest(settings, undefined)
+  validateManifest(manifest)
+  const instanceId = manifest.instanceId || DEFAULT_MANIFEST.instanceId || "aetherion-main"
+  const root = settings.minecraft.gameDirectory || instancePath(instanceId)
+  const [localState, installedHashes] = await Promise.all([
+    readInstanceState(root, manifest, instanceId),
+    scanInstalledHashes(root),
+  ])
+  const plan = computeUpdatePlan(manifest, localState, installedHashes)
+  return {
+    downloadCount: plan.downloadCount,
+    removeCount: plan.removeCount,
+    totalBytes: plan.totalBytes,
+  }
+})
+
 ipcMain.handle("launch:start", async (_event, args) => {
   console.log("[aetherion] launch requested", args)
   activeLaunchAbort?.abort()
@@ -1437,6 +1498,11 @@ async function loadManifest(settings, signal) {
     if (isDev && fsSync.existsSync(localManifestPath)) {
       console.log("[aetherion] using local manifest", localManifestPath)
       return readJsonFile(localManifestPath)
+    }
+    const bundledManifestPath = path.join(app.getAppPath(), "out", "manifest.json")
+    if (!isDev && fsSync.existsSync(bundledManifestPath)) {
+      console.log("[aetherion] using bundled manifest", bundledManifestPath)
+      return readJsonFile(bundledManifestPath)
     }
     return DEFAULT_MANIFEST
   }

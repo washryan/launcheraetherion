@@ -42,6 +42,29 @@ export function LauncherTab() {
     })
   }
 
+  async function runLauncherAction(action: () => Promise<unknown>, success: string) {
+    try {
+      await action()
+      setStatus(success)
+    } catch (err) {
+      console.warn("[aetherion] launcher action failed", err)
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function verifyIntegrity() {
+    try {
+      const result = await window.aetherion?.launcher?.verifyIntegrity()
+      if (!result) return
+      setStatus(
+        `Integridade verificada: ${result.downloadCount} download(s), ${result.removeCount} remocao(oes).`,
+      )
+    } catch (err) {
+      console.warn("[aetherion] verify integrity failed", err)
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return (
     <>
       <SettingsSection
@@ -95,7 +118,17 @@ export function LauncherTab() {
             value={prefs.dataDirectory ?? "%APPDATA%\\Aetherion Launcher"}
             className="flex-1 h-9 bg-input/40 font-mono text-xs"
           />
-          <Button variant="outline" size="sm" className="h-9 gap-2 bg-transparent">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-2 bg-transparent"
+            onClick={() =>
+              runLauncherAction(
+                () => window.aetherion?.launcher?.openDataDirectory() ?? Promise.resolve(),
+                "Pasta de armazenamento aberta.",
+              )
+            }
+          >
             <FolderOpen className="size-4" />
             Abrir
           </Button>
@@ -106,16 +139,29 @@ export function LauncherTab() {
             icon={<RotateCcw className="size-4" />}
             title="Verificar integridade"
             description="Recalcula hashes e baixa arquivos corrompidos."
+            onClick={verifyIntegrity}
           />
           <ActionCard
             icon={<Trash2 className="size-4" />}
             title="Limpar cache"
             description="Remove downloads temporarios e thumbnails."
+            onClick={() =>
+              runLauncherAction(
+                () => window.aetherion?.launcher?.clearCache() ?? Promise.resolve(),
+                "Cache local limpo.",
+              )
+            }
           />
           <ActionCard
             icon={<FileText className="size-4" />}
             title="Ver logs"
             description="Abre a pasta de logs do launcher e do jogo."
+            onClick={() =>
+              runLauncherAction(
+                () => window.aetherion?.launcher?.openLogsDirectory() ?? Promise.resolve(),
+                "Pasta de logs aberta.",
+              )
+            }
           />
         </div>
       </SettingsSection>
@@ -136,14 +182,17 @@ function ActionCard({
   icon,
   title,
   description,
+  onClick,
 }: {
   icon: React.ReactNode
   title: string
   description: string
+  onClick?: () => void
 }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       className="text-left p-4 rounded-lg border border-border/50 bg-card/40 hover:border-primary/40 hover:bg-primary/5 transition"
     >
       <span className="inline-flex size-8 items-center justify-center rounded-md bg-muted text-muted-foreground">

@@ -132,10 +132,7 @@ const REQUIRED_MOD_FILENAMES = [
   "TerraBlender-forge-1.19.2-2.0.1.166.jar",
 ]
 
-const OPTIONAL_MOD_FILENAMES = [
-  "jei-1.19.2-forge-11.8.1.1034.jar",
-  "OptiFine_1.19.2_HD_U_I2.jar",
-]
+const OPTIONAL_MOD_FILENAMES = ["jei-1.19.2-forge-11.8.1.1034.jar"]
 
 function modFile(filename: string, type: "required" | "optional", index: number) {
   const id = filename

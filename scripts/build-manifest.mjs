@@ -66,10 +66,12 @@ const REQUIRED_MOD_FILENAMES = [
   "TerraBlender-forge-1.19.2-2.0.1.166.jar",
 ]
 
-const OPTIONAL_MOD_FILENAMES = [
-  "jei-1.19.2-forge-11.8.1.1034.jar",
+const OPTIONAL_MOD_FILENAMES = ["jei-1.19.2-forge-11.8.1.1034.jar"]
+
+const BLOCKED_MOD_FILENAMES = new Set([
+  // Crasha com aether.mixins.json:client.optifine.BossHealthOverlayMixin em 1.19.2.
   "OptiFine_1.19.2_HD_U_I2.jar",
-]
+])
 
 const DEFAULT_FORGE_SHA256 =
   "4869e60456321e99eb5120ae39171c382c27a05858cdfd4b90ff123e3750e681"
@@ -195,6 +197,10 @@ async function officialModEntries(type, expectedFilenames, folder, startIndex) {
   if (!templateMode) {
     const expected = new Set(expectedFilenames)
     for (const [filename, absPath] of found.entries()) {
+      if (BLOCKED_MOD_FILENAMES.has(filename)) {
+        console.warn(`  (bloqueado por incompatibilidade: ${filename})`)
+        continue
+      }
       if (expected.has(filename)) continue
       console.warn(`  (extra em ${folder}: ${filename})`)
       entries.push(await modEntry(absPath, filename, type, startIndex + entries.length))

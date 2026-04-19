@@ -65,6 +65,16 @@ declare global {
           }
         } | null>
       }
+      launcher: {
+        openDataDirectory: () => Promise<{ ok: boolean }>
+        openLogsDirectory: () => Promise<{ ok: boolean }>
+        clearCache: () => Promise<{ removed: number }>
+        verifyIntegrity: () => Promise<{
+          downloadCount: number
+          removeCount: number
+          totalBytes: number
+        }>
+      }
       mods: {
         listDropins: () => Promise<import("@/lib/launcher/types").DropinMod[]>
         addDropins: () => Promise<import("@/lib/launcher/types").DropinMod[]>

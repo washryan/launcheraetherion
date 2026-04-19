@@ -6,6 +6,7 @@ __v0_jsx-dev-runtime.ts
 .v0-trash/
 .vercel/
 out/
+dist/
 next.user-config.*
 
 # Environment variables
@@ -20,4 +21,4 @@ hs_err_pid*.log
 
 # Local modpack build inputs / generated manifest
 pack-v*/
-manifest.json
+/manifest.json
