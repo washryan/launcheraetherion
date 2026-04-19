@@ -717,13 +717,15 @@ function collectLibraries(root, libraries) {
 
     const nativeClassifier = nativeClassifierFor(library)
     const native = nativeClassifier ? library.downloads?.classifiers?.[nativeClassifier] : null
-    const nativeArtifact = libraryArtifactFromDownload(root, library, native)
-    if (nativeArtifact) {
-      nativeArtifacts.push({
-        ...nativeArtifact,
-        exclude: library.extract?.exclude || [],
-      })
-      if (!fsSync.existsSync(nativeArtifact.path)) missingNatives.push(nativeArtifact.relativePath)
+    if (native) {
+      const nativeArtifact = libraryArtifactFromDownload(root, library, native)
+      if (nativeArtifact) {
+        nativeArtifacts.push({
+          ...nativeArtifact,
+          exclude: library.extract?.exclude || [],
+        })
+        if (!fsSync.existsSync(nativeArtifact.path)) missingNatives.push(nativeArtifact.relativePath)
+      }
     }
   }
 
@@ -774,12 +776,16 @@ function libraryArtifactFromDownload(root, library, download) {
 }
 
 function libraryUrlFor(library, artifactPath) {
-  if (!library.url) return null
-  return `${String(library.url).replace(/\/?$/, "/")}${artifactPath}`
+  const base = library.url || "https://libraries.minecraft.net/"
+  return `${String(base).replace(/\/?$/, "/")}${artifactPath}`
 }
 
 function isNativeLibrary(library, artifactPath) {
-  return Boolean(library.natives) || /(^|-)natives-/.test(library.name || artifactPath)
+  return (
+    Boolean(library.natives) ||
+    /(^|-)natives-/.test(library.name || "") ||
+    /(^|-)natives-/.test(artifactPath || "")
+  )
 }
 
 function assetObjectArtifact(root, name, object) {
