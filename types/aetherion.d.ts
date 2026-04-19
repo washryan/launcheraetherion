@@ -24,6 +24,7 @@ declare global {
             forge: string
           }
         }>
+        cancel: () => Promise<{ ok: boolean }>
         onProgress: (cb: (progress: LaunchProgress) => void) => () => void
       }
       accounts: {

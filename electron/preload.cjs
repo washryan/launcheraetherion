@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("aetherion", {
   },
   launch: {
     start: (args) => ipcRenderer.invoke("launch:start", args),
+    cancel: () => ipcRenderer.invoke("launch:cancel"),
     onProgress: (cb) => {
       const listener = (_event, progress) => cb(progress)
       ipcRenderer.on("launch:progress", listener)

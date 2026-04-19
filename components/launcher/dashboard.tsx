@@ -82,6 +82,10 @@ export function Dashboard() {
 
   function cancel() {
     abortRef.current?.abort()
+    window.aetherion?.launch.cancel().catch((err) => {
+      console.warn("[aetherion] failed to cancel launch", err)
+    })
+    setProgress(null)
   }
 
   return (
