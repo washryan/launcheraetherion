@@ -370,7 +370,10 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
   const nativesDirectory = path.join(root, "natives", profileId)
   const clientJar = path.join(root, "versions", parentId, `${parentId}.jar`)
   const libraryPlan = collectLibraries(root, merged.libraries)
-  const classpathEntries = [...libraryPlan.classpath, clientJar]
+  const includeVanillaClientJar = !isForgeProfile(forgeProfile)
+  const classpathEntries = includeVanillaClientJar
+    ? [...libraryPlan.classpath, clientJar]
+    : libraryPlan.classpath
   const assetPlan = await collectAssetPlan(root, parentProfile.assetIndex)
   const variables = {
     auth_player_name: account.username,
@@ -407,7 +410,9 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
   const missing = [
     ...libraryPlan.missing,
     ...libraryPlan.missingNatives,
-    ...(fsSync.existsSync(clientJar) ? [] : [toPosix(path.relative(root, clientJar))]),
+    ...(includeVanillaClientJar && !fsSync.existsSync(clientJar)
+      ? [toPosix(path.relative(root, clientJar))]
+      : []),
     ...assetPlan.missing,
   ]
 
@@ -420,6 +425,7 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
     javaVersion: java.version,
     mainClass: merged.mainClass,
     classpathEntries,
+    includeVanillaClientJar,
     libraryArtifacts: libraryPlan.artifacts,
     nativeArtifacts: libraryPlan.nativeArtifacts,
     nativesDirectory,
@@ -459,6 +465,7 @@ function summarizeLaunchPlan(plan) {
     javaVersion: plan.javaVersion,
     mainClass: plan.mainClass,
     classpathEntries: plan.classpathEntries.length,
+    includeVanillaClientJar: plan.includeVanillaClientJar,
     libraryArtifacts: plan.libraryArtifacts.length,
     nativeArtifacts: plan.nativeArtifacts.length,
     jvmArgs: plan.jvmArgs.length,
@@ -535,7 +542,7 @@ async function startMinecraft(launchPlan, signal) {
     }
     const startedTimer = setTimeout(() => {
       settle(resolve, { pid: child.pid, logPath })
-    }, 3500)
+    }, 15000)
 
     child.on("error", (error) => {
       settle(reject, error)
@@ -790,6 +797,11 @@ function mergeVersionProfiles(parent, child) {
       ],
     },
   }
+}
+
+function isForgeProfile(profile) {
+  const gameArgs = normalizeArguments(profile.arguments?.game || profile.minecraftArguments)
+  return gameArgs.some((arg) => arg === "forgeclient" || arg === "--fml.forgeVersion")
 }
 
 function normalizeArguments(value) {
