@@ -110,7 +110,7 @@ export default function DownloadPage() {
             size="lg"
             className="h-12 px-5 gap-2 bg-transparent"
           >
-            <Link href="/">
+            <Link href="/launcher">
               Abrir preview da UI
               <ArrowRight className="size-4" />
             </Link>
