@@ -47,6 +47,22 @@ export function Dashboard() {
     setProgress({ phase: "fetching-manifest", message: "Iniciando..." })
 
     try {
+      if (window.aetherion?.launch) {
+        const unsubscribe = window.aetherion.launch.onProgress((p) => setProgress(p))
+        try {
+          await window.aetherion.launch.start({
+            accountId: activeAccount.id,
+            instanceId: MOCK_MANIFEST.instanceId ?? "aetherion-main",
+            fullscreen: false,
+            width: 1280,
+            height: 720,
+          })
+        } finally {
+          unsubscribe()
+        }
+        return
+      }
+
       await simulateLaunch({
         signal: controller.signal,
         onProgress: (p) => setProgress(p),

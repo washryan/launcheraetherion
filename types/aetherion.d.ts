@@ -1,4 +1,4 @@
-import type { AccountsState } from "@/lib/launcher/types"
+import type { AccountsState, LaunchProgress } from "@/lib/launcher/types"
 
 export {}
 
@@ -17,7 +17,14 @@ declare global {
           fullscreen: boolean
           width: number
           height: number
-        }) => Promise<{ ok: boolean }>
+        }) => Promise<{
+          ok: boolean
+          target?: {
+            minecraft: string
+            forge: string
+          }
+        }>
+        onProgress: (cb: (progress: LaunchProgress) => void) => () => void
       }
       accounts: {
         list: () => Promise<AccountsState>

@@ -58,7 +58,7 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
 
         <div className="p-3 border-t border-border/50">
           <Link
-            href="/"
+            href="/launcher"
             className="flex items-center gap-3 px-3 h-9 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition"
           >
             <ArrowLeft className="size-4" />

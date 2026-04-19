@@ -8,6 +8,11 @@ contextBridge.exposeInMainWorld("aetherion", {
   },
   launch: {
     start: (args) => ipcRenderer.invoke("launch:start", args),
+    onProgress: (cb) => {
+      const listener = (_event, progress) => cb(progress)
+      ipcRenderer.on("launch:progress", listener)
+      return () => ipcRenderer.off("launch:progress", listener)
+    },
   },
   accounts: {
     list: () => ipcRenderer.invoke("accounts:list"),

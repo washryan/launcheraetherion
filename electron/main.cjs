@@ -5,6 +5,10 @@ const path = require("node:path")
 
 const isDev = !app.isPackaged
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,16}$/
+const LAUNCH_TARGET = {
+  minecraft: "1.19.2",
+  forge: "43.5.0",
+}
 
 let mainWindow = null
 
@@ -107,7 +111,35 @@ ipcMain.handle("accounts:addMicrosoft", () => {
 
 ipcMain.handle("launch:start", async (_event, args) => {
   console.log("[aetherion] launch requested", args)
-  return { ok: true }
+  const steps = [
+    {
+      phase: "fetching-manifest",
+      message: `Alvo: Minecraft ${LAUNCH_TARGET.minecraft} + Forge ${LAUNCH_TARGET.forge}`,
+    },
+    {
+      phase: "computing-plan",
+      message: "Electron conectado. Preparando plano local...",
+    },
+    {
+      phase: "checking-java",
+      message: "Proxima etapa: localizar Java 17 e pasta da instancia.",
+    },
+    {
+      phase: "launching",
+      message: "Fase 2.5 concluida. Updater real entra na Fase 3.",
+    },
+    {
+      phase: "running",
+      message: "Ponte Electron pronta para o updater.",
+    },
+  ]
+
+  for (const step of steps) {
+    emitLaunchProgress(step)
+    await sleep(450)
+  }
+
+  return { ok: true, target: LAUNCH_TARGET }
 })
 
 function validateOfflineUsername(username) {
@@ -188,4 +220,12 @@ function sanitizeAccountsState(value) {
 
 function accountsPath() {
   return path.join(app.getPath("userData"), "accounts.json")
+}
+
+function emitLaunchProgress(progress) {
+  mainWindow?.webContents.send("launch:progress", progress)
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
