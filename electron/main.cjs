@@ -12,6 +12,7 @@ const LAUNCHER_NAME = "AetherionLauncher"
 const LAUNCHER_VERSION = "0.1.0"
 const MOJANG_VERSION_MANIFEST =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
+const MINECRAFT_RESOURCES_BASE = "https://resources.download.minecraft.net"
 const LAUNCH_TARGET = {
   minecraft: "1.19.2",
   forge: "43.5.0",
@@ -304,12 +305,19 @@ async function runUpdater(args, signal) {
   await writeInstanceState(root, nextState)
 
   const launchPlan = await buildMinecraftLaunchPlan(root, manifest, args, signal)
+  if (!launchPlan.ready) {
+    await prepareMinecraftRuntime(root, launchPlan, signal)
+  }
+  const finalLaunchPlan = await buildMinecraftLaunchPlan(root, manifest, args, signal)
+  if (!finalLaunchPlan.ready) {
+    throw new Error(
+      `Ainda faltam ${finalLaunchPlan.missing.length} arquivo(s) para iniciar. Primeiro: ${finalLaunchPlan.missing[0]}`,
+    )
+  }
 
   emitLaunchProgress({
     phase: "running",
-    message: launchPlan.ready
-      ? "LaunchPlan pronto. Minecraft/Forge pode ser iniciado na proxima fase."
-      : `LaunchPlan gerado, mas ainda faltam ${launchPlan.missing.length} arquivo(s).`,
+    message: "Runtime Minecraft/Forge pronto. Spawn do jogo entra na proxima fase.",
     totalBytes: plan.totalBytes,
     loadedBytes: plan.totalBytes,
     filesDone: plan.downloadCount,
@@ -319,7 +327,7 @@ async function runUpdater(args, signal) {
   return {
     minecraft: manifest.minecraft,
     forge: manifest.forge.version,
-    launchPlan: summarizeLaunchPlan(launchPlan),
+    launchPlan: summarizeLaunchPlan(finalLaunchPlan),
   }
 }
 
@@ -357,6 +365,7 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
   const clientJar = path.join(root, "versions", parentId, `${parentId}.jar`)
   const libraryPlan = collectLibraries(root, merged.libraries)
   const classpathEntries = [...libraryPlan.classpath, clientJar]
+  const assetPlan = await collectAssetPlan(root, parentProfile.assetIndex)
   const variables = {
     auth_player_name: account.username,
     version_name: profileId,
@@ -388,9 +397,7 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
     ...libraryPlan.missing,
     ...libraryPlan.missingNatives,
     ...(fsSync.existsSync(clientJar) ? [] : [toPosix(path.relative(root, clientJar))]),
-    ...(fsSync.existsSync(assetIndexPath)
-      ? []
-      : [toPosix(path.relative(root, assetIndexPath))]),
+    ...assetPlan.missing,
   ]
 
   const launchPlan = {
@@ -402,6 +409,7 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
     javaVersion: java.version,
     mainClass: merged.mainClass,
     classpathEntries,
+    libraryArtifacts: libraryPlan.artifacts,
     nativeArtifacts: libraryPlan.nativeArtifacts,
     nativesDirectory,
     jvmArgs,
@@ -415,6 +423,8 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
       sha1: parentProfile.assetIndex?.sha1 || null,
       size: parentProfile.assetIndex?.size || null,
     },
+    assetObjects: assetPlan.objects,
+    missingAssetObjects: assetPlan.missingObjects,
   }
 
   console.log("[aetherion] launch plan", summarizeLaunchPlan(launchPlan))
@@ -438,14 +448,172 @@ function summarizeLaunchPlan(plan) {
     javaVersion: plan.javaVersion,
     mainClass: plan.mainClass,
     classpathEntries: plan.classpathEntries.length,
+    libraryArtifacts: plan.libraryArtifacts.length,
     nativeArtifacts: plan.nativeArtifacts.length,
     jvmArgs: plan.jvmArgs.length,
     gameArgs: plan.gameArgs.length,
     commandArgs: plan.commandArgs.length,
     assetIndex: plan.assetIndex.id,
+    assetObjects: plan.assetObjects.length,
+    missingAssetObjects: plan.missingAssetObjects,
     missing: plan.missing.slice(0, 20),
     missingCount: plan.missing.length,
   }
+}
+
+async function prepareMinecraftRuntime(root, launchPlan, signal) {
+  const artifacts = uniqueArtifacts([
+    ...launchPlan.libraryArtifacts,
+    ...launchPlan.nativeArtifacts,
+  ])
+  const libraryDownloads = []
+
+  for (const artifact of artifacts) {
+    if (!(await fileMatchesHash(artifact.path, artifact.sha1, "sha1"))) {
+      libraryDownloads.push(artifact)
+    }
+  }
+
+  const indexDownloads = []
+  if (
+    launchPlan.assetIndex.url &&
+    !(await fileMatchesHash(launchPlan.assetIndex.path, launchPlan.assetIndex.sha1, "sha1"))
+  ) {
+    indexDownloads.push({
+      path: launchPlan.assetIndex.path,
+      url: launchPlan.assetIndex.url,
+      sha1: launchPlan.assetIndex.sha1,
+      size: launchPlan.assetIndex.size || 0,
+      label: `asset index ${launchPlan.assetIndex.id}`,
+    })
+  }
+
+  const firstBatch = [...libraryDownloads, ...indexDownloads]
+  await downloadRuntimeArtifacts(firstBatch, signal, "Baixando bibliotecas e indice de assets")
+
+  const assetIndex = await readJsonFile(launchPlan.assetIndex.path)
+  const assetDownloads = []
+  for (const [name, object] of Object.entries(assetIndex.objects || {})) {
+    if (!object?.hash) continue
+    const asset = assetObjectArtifact(root, name, object)
+    if (!(await fileMatchesHash(asset.path, asset.sha1, "sha1"))) {
+      assetDownloads.push(asset)
+    }
+  }
+
+  await downloadRuntimeArtifacts(assetDownloads, signal, "Baixando assets do Minecraft")
+  await ensureNativesExtracted(launchPlan, signal)
+}
+
+async function downloadRuntimeArtifacts(artifacts, signal, label) {
+  if (!artifacts.length) return
+
+  let loadedBytes = 0
+  let filesDone = 0
+  const totalBytes = artifacts.reduce((total, artifact) => total + (artifact.size || 0), 0)
+
+  emitLaunchProgress({
+    phase: "downloading-files",
+    message: `${label}...`,
+    totalBytes,
+    loadedBytes,
+    filesDone,
+    filesTotal: artifacts.length,
+  })
+
+  await runWithConcurrency(artifacts, 8, async (artifact) => {
+    await downloadArtifactWithRetry(artifact, signal, (delta) => {
+      loadedBytes += delta
+      emitLaunchProgress({
+        phase: "downloading-files",
+        message: `Baixando ${artifact.label || displayName(artifact.path)}...`,
+        totalBytes,
+        loadedBytes,
+        filesDone,
+        filesTotal: artifacts.length,
+      })
+    })
+    filesDone++
+    emitLaunchProgress({
+      phase: "downloading-files",
+      message: `${artifact.label || displayName(artifact.path)} concluido.`,
+      totalBytes,
+      loadedBytes,
+      filesDone,
+      filesTotal: artifacts.length,
+    })
+  })
+}
+
+async function downloadArtifactWithRetry(artifact, signal, onBytes) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await downloadArtifact(artifact, signal, onBytes)
+      return
+    } catch (error) {
+      await fs.rm(`${artifact.path}.download`, { force: true }).catch(() => undefined)
+      if (signal.aborted || attempt === 3) throw error
+      await sleep([1000, 3000, 9000][attempt - 1])
+    }
+  }
+}
+
+async function downloadArtifact(artifact, signal, onBytes) {
+  if (!artifact.url) throw new Error(`Artefato sem URL: ${artifact.label || artifact.path}`)
+
+  const temp = `${artifact.path}.download`
+  await fs.mkdir(path.dirname(artifact.path), { recursive: true })
+  await downloadUrlToTemp(artifact.url, temp, "sha1", artifact.sha1, signal, onBytes)
+  await fs.rm(artifact.path, { force: true })
+  await fs.rename(temp, artifact.path)
+}
+
+async function ensureNativesExtracted(launchPlan, signal) {
+  if (!launchPlan.nativeArtifacts.length) return
+
+  const statePath = path.join(launchPlan.nativesDirectory, ".aetherion-natives.json")
+  const expectedState = JSON.stringify(
+    launchPlan.nativeArtifacts.map((artifact) => ({
+      path: toPosix(path.relative(launchPlan.root, artifact.path)),
+      sha1: artifact.sha1,
+    })),
+  )
+
+  try {
+    const current = await fs.readFile(statePath, "utf8")
+    if (current === expectedState) return
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      console.warn("[aetherion] failed to read natives state", error)
+    }
+  }
+
+  emitLaunchProgress({
+    phase: "verifying",
+    message: "Extraindo natives do Minecraft...",
+  })
+
+  await fs.rm(launchPlan.nativesDirectory, { recursive: true, force: true })
+  await fs.mkdir(launchPlan.nativesDirectory, { recursive: true })
+
+  const jar = jarExecutableFor(launchPlan.javaPath)
+  for (const artifact of launchPlan.nativeArtifacts) {
+    await runProcess(
+      jar,
+      ["xf", artifact.path],
+      { cwd: launchPlan.nativesDirectory },
+      signal,
+      undefined,
+    )
+  }
+
+  await fs.writeFile(statePath, expectedState, "utf8")
+}
+
+function jarExecutableFor(javaPath) {
+  const executable = process.platform === "win32" ? "jar.exe" : "jar"
+  const sibling = path.join(path.dirname(javaPath), executable)
+  return fsSync.existsSync(sibling) ? sibling : executable
 }
 
 async function getLaunchAccount(accountId) {
@@ -526,6 +694,7 @@ function normalizeArguments(value) {
 }
 
 function collectLibraries(root, libraries) {
+  const artifacts = []
   const classpath = []
   const nativeArtifacts = []
   const missing = []
@@ -534,28 +703,106 @@ function collectLibraries(root, libraries) {
   for (const library of libraries || []) {
     if (!isAllowedByRules(library.rules)) continue
 
-    const artifactPath = library.downloads?.artifact?.path || mavenPathFromName(library.name)
-    if (artifactPath) {
-      const absolute = path.join(root, "libraries", ...artifactPath.split("/"))
-      classpath.push(absolute)
-      if (!fsSync.existsSync(absolute)) missing.push(toPosix(path.relative(root, absolute)))
+    const artifact = libraryArtifactFromDownload(root, library, library.downloads?.artifact)
+    if (artifact) {
+      if (isNativeLibrary(library, artifact.relativePath)) {
+        nativeArtifacts.push(artifact)
+        if (!fsSync.existsSync(artifact.path)) missingNatives.push(artifact.relativePath)
+      } else {
+        artifacts.push(artifact)
+        classpath.push(artifact.path)
+        if (!fsSync.existsSync(artifact.path)) missing.push(artifact.relativePath)
+      }
     }
 
     const nativeClassifier = nativeClassifierFor(library)
     const native = nativeClassifier ? library.downloads?.classifiers?.[nativeClassifier] : null
-    if (native?.path) {
-      const absolute = path.join(root, "libraries", ...native.path.split("/"))
+    const nativeArtifact = libraryArtifactFromDownload(root, library, native)
+    if (nativeArtifact) {
       nativeArtifacts.push({
-        path: absolute,
+        ...nativeArtifact,
         exclude: library.extract?.exclude || [],
       })
-      if (!fsSync.existsSync(absolute)) {
-        missingNatives.push(toPosix(path.relative(root, absolute)))
-      }
+      if (!fsSync.existsSync(nativeArtifact.path)) missingNatives.push(nativeArtifact.relativePath)
     }
   }
 
-  return { classpath, nativeArtifacts, missing, missingNatives }
+  return { artifacts, classpath, nativeArtifacts, missing, missingNatives }
+}
+
+async function collectAssetPlan(root, assetIndex) {
+  if (!assetIndex?.id || !assetIndex?.url) {
+    return { objects: [], missing: [], missingObjects: 0 }
+  }
+
+  const indexPath = path.join(root, "assets", "indexes", `${assetIndex.id}.json`)
+  if (!fsSync.existsSync(indexPath)) {
+    return {
+      objects: [],
+      missing: [toPosix(path.relative(root, indexPath))],
+      missingObjects: 0,
+    }
+  }
+
+  const index = await readJsonFile(indexPath)
+  const objects = []
+  const missing = []
+  for (const [name, object] of Object.entries(index.objects || {})) {
+    if (!object?.hash) continue
+    const artifact = assetObjectArtifact(root, name, object)
+    objects.push(artifact)
+    if (!fsSync.existsSync(artifact.path)) missing.push(artifact.relativePath)
+  }
+
+  return { objects, missing, missingObjects: missing.length }
+}
+
+function libraryArtifactFromDownload(root, library, download) {
+  const artifactPath = download?.path || mavenPathFromName(library.name)
+  if (!artifactPath) return null
+
+  const url = download?.url || libraryUrlFor(library, artifactPath)
+  const absolute = path.join(root, "libraries", ...artifactPath.split("/"))
+  return {
+    path: absolute,
+    relativePath: toPosix(path.relative(root, absolute)),
+    url,
+    sha1: download?.sha1 || null,
+    size: download?.size || 0,
+    label: library.name || artifactPath,
+  }
+}
+
+function libraryUrlFor(library, artifactPath) {
+  if (!library.url) return null
+  return `${String(library.url).replace(/\/?$/, "/")}${artifactPath}`
+}
+
+function isNativeLibrary(library, artifactPath) {
+  return Boolean(library.natives) || /(^|-)natives-/.test(library.name || artifactPath)
+}
+
+function assetObjectArtifact(root, name, object) {
+  const hash = object.hash
+  const shard = hash.slice(0, 2)
+  const absolute = path.join(root, "assets", "objects", shard, hash)
+  return {
+    path: absolute,
+    relativePath: toPosix(path.relative(root, absolute)),
+    url: `${MINECRAFT_RESOURCES_BASE}/${shard}/${hash}`,
+    sha1: hash,
+    size: object.size || 0,
+    label: name,
+  }
+}
+
+function uniqueArtifacts(artifacts) {
+  const byPath = new Map()
+  for (const artifact of artifacts) {
+    if (!artifact?.path) continue
+    byPath.set(artifact.path, artifact)
+  }
+  return [...byPath.values()]
 }
 
 function resolveArguments(args, variables) {
@@ -1113,6 +1360,10 @@ async function downloadAction(root, action, signal, onBytes) {
 }
 
 async function downloadToTemp(url, temp, expectedSha256, signal, onBytes) {
+  await downloadUrlToTemp(url, temp, "sha256", expectedSha256, signal, onBytes)
+}
+
+async function downloadUrlToTemp(url, temp, algorithm, expectedHash, signal, onBytes) {
   throwIfAborted(signal)
   const response = await fetch(url, { signal, redirect: "follow" })
   if (!response.ok) {
@@ -1120,7 +1371,7 @@ async function downloadToTemp(url, temp, expectedSha256, signal, onBytes) {
   }
   if (!response.body) throw new Error(`Resposta sem stream em ${url}`)
 
-  const hash = crypto.createHash("sha256")
+  const hash = crypto.createHash(algorithm)
   const writer = fsSync.createWriteStream(temp)
   const reader = response.body.getReader()
 
@@ -1131,7 +1382,7 @@ async function downloadToTemp(url, temp, expectedSha256, signal, onBytes) {
       if (done) break
       const chunk = Buffer.from(value)
       hash.update(chunk)
-      onBytes(chunk.byteLength)
+      onBytes?.(chunk.byteLength)
       if (!writer.write(chunk)) await once(writer, "drain")
     }
   } finally {
@@ -1140,9 +1391,9 @@ async function downloadToTemp(url, temp, expectedSha256, signal, onBytes) {
 
   await once(writer, "finish")
   const actual = hash.digest("hex")
-  if (expectedSha256 && actual.toLowerCase() !== expectedSha256.toLowerCase()) {
+  if (expectedHash && actual.toLowerCase() !== expectedHash.toLowerCase()) {
     throw new Error(
-      `Hash SHA-256 nao confere para ${url}\n  esperado: ${expectedSha256}\n  recebido: ${actual}`,
+      `Hash ${algorithm.toUpperCase()} nao confere para ${url}\n  esperado: ${expectedHash}\n  recebido: ${actual}`,
     )
   }
 }
@@ -1174,7 +1425,18 @@ async function walkFiles(dir) {
 }
 
 async function sha256File(file) {
-  const hash = crypto.createHash("sha256")
+  return hashFile(file, "sha256")
+}
+
+async function fileMatchesHash(file, expectedHash, algorithm) {
+  if (!fsSync.existsSync(file)) return false
+  if (!expectedHash) return true
+  const actual = await hashFile(file, algorithm)
+  return actual.toLowerCase() === expectedHash.toLowerCase()
+}
+
+async function hashFile(file, algorithm) {
+  const hash = crypto.createHash(algorithm)
   const stream = fsSync.createReadStream(file)
   for await (const chunk of stream) hash.update(chunk)
   return hash.digest("hex")
