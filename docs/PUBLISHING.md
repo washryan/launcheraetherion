@@ -1,170 +1,124 @@
-# Publicação do modpack com GitHub Releases + Pages
+# Publicacao do modpack Aetherion
 
-Custo: **zero**. Limites práticos: assets de release podem ter até **2 GB** cada e você tem
-quota abundante de download. Perfeito para um modpack.
+Fluxo sem custo inicial:
 
----
+- Site e `manifest.json`: Vercel ou GitHub Pages.
+- Arquivos pesados: GitHub Releases do repositorio `washryan/launcheraetherion`.
+- Launcher: baixa somente o que mudou, valida SHA-256 e preserva drop-ins.
 
-## 1) Estrutura de repositórios
+## 1. Estrutura local do pack
 
-Você vai ter dois repos, ambos públicos:
+Monte uma pasta assim:
 
-```
-aetherion-network/
-├── aetherion-launcher          ← código do launcher (Electron)
-└── aetherion-launcher-assets   ← modpack + manifest
-```
-
-No `aetherion-launcher-assets`:
-
-- **Releases** armazenam os `.jar` pesados (mods, forge installer).
-- **GitHub Pages** (branch `gh-pages` ou pasta `/docs` da branch main) serve o
-  `manifest.json` e o site estático.
-
----
-
-## 2) Gerar uma nova versão (ex: v0.3)
-
-### 2.1 Monte a pasta local
-
-```
+```text
 pack-v0.3/
-├── forge-1.19.2-43.3.13-installer.jar
-├── mods/
-│   ├── required/
-│   │   ├── aetherion-core-2.4.1.jar
-│   │   ├── create-0.5.1f.jar
-│   │   └── jei-11.6.0.jar
-│   └── optional/
-│       ├── journeymap-5.9.7.jar
-│       └── soundphysics-1.1.6.jar
-└── config/
-    └── aetherion-common.toml
+  forge-1.19.2-43.5.0-installer.jar
+  mods/
+    required/
+      AdvancementPlaques-1.19.2-1.4.7.jar
+      aeroblender-1.19.2-1.0.1.jar
+      ...
+      TerraBlender-forge-1.19.2-2.0.1.166.jar
+    optional/
+      jei-1.19.2-forge-11.8.1.1034.jar
+      OptiFine_1.19.2_HD_U_I2.jar
+  config/
+    seus-arquivos.toml
 ```
 
-### 2.2 Gere o manifest com hashes reais
+Obrigatorios ficam em `mods/required`. Opcionais ficam em `mods/optional`.
+O launcher instala tudo no destino final `mods/`, mas usa essas pastas para
+classificar cada entrada do manifest.
 
-```bash
-node scripts/build-manifest.mjs \
-  --version 0.3 \
-  --mc 1.19.2 \
-  --forge 43.3.13 \
-  --in ./pack-v0.3 \
-  --out ./manifest.json \
-  --owner aetherion-network \
-  --repo aetherion-launcher-assets
+## 2. Gerar manifest com SHA real
+
+```powershell
+pnpm manifest:build
 ```
 
-O script calcula `sha256` e `size` de cada arquivo e preenche as URLs no formato
-`https://github.com/{owner}/{repo}/releases/download/v0.3/{filename}`.
+Esse comando roda:
 
-### 2.3 Crie o release no GitHub
-
-Via **gh CLI** (recomendado — uma linha só):
-
-```bash
-cd pack-v0.3
-gh release create v0.3 \
-  --repo aetherion-network/aetherion-launcher-assets \
-  --title "Aetherion v0.3" \
-  --notes-file ../CHANGELOG-v0.3.md \
-  forge-1.19.2-43.3.13-installer.jar \
-  mods/required/*.jar \
-  mods/optional/*.jar \
-  config/*.toml
+```powershell
+node scripts/build-manifest.mjs --version 0.3 --mc 1.19.2 --forge 43.5.0 --in ./pack-v0.3 --out ./manifest.json --owner washryan --repo launcheraetherion
 ```
 
-Ou via interface web: `Releases → Draft a new release → Upload assets`.
+O script calcula:
 
-### 2.4 Publique o manifest
+- `sha256` real de cada arquivo.
+- `size` real.
+- URL de download para cada asset do GitHub Release `v0.3`.
+- `defaultEnabled: true` para JEI.
+- `defaultEnabled: false` para OptiFine.
 
-O `manifest.json` **não** vai como asset do release — vai no GitHub Pages para
-ser servido como JSON público com URL estável.
+Se algum dos 45 obrigatorios estiver faltando, ele avisa. Para transformar aviso
+em erro, rode com `--strict`:
 
-Opção A (pasta `/docs` na branch main — mais simples):
+```powershell
+node scripts/build-manifest.mjs --strict
+```
 
-```bash
-cp manifest.json docs/
-git add docs/manifest.json
-git commit -m "chore(pack): publish manifest v0.3"
+## 3. Subir assets no GitHub Release
+
+Crie a tag/release `v0.3` e envie Forge + mods + configs:
+
+```powershell
+gh release create v0.3 `
+  --repo washryan/launcheraetherion `
+  --title "Aetherion Modpack v0.3" `
+  --notes "Primeiro pacote Aetherion com Forge 1.19.2-43.5.0" `
+  pack-v0.3/forge-1.19.2-43.5.0-installer.jar `
+  pack-v0.3/mods/required/*.jar `
+  pack-v0.3/mods/optional/*.jar `
+  pack-v0.3/config/*
+```
+
+Tambem pode fazer pela interface web em GitHub > Releases > Draft a new release.
+
+## 4. Publicar o manifest
+
+Quando `manifest.json` estiver pronto, copie para `public/manifest.json` neste
+projeto e faca deploy pela Vercel:
+
+```powershell
+Copy-Item .\manifest.json .\public\manifest.json
+git add public/manifest.json
+git commit -m "Publish modpack manifest v0.3"
 git push
 ```
 
-Depois em `Settings → Pages → Source`: `main` / `/docs`.
+Depois do deploy, a URL final sera:
 
-A URL pública será:
-`https://aetherion-network.github.io/aetherion-launcher-assets/manifest.json`
-
-Opção B (branch dedicada `gh-pages`):
-
-```bash
-git checkout --orphan gh-pages
-git rm -rf .
-cp ../manifest.json .
-git add manifest.json
-git commit -m "publish v0.3"
-git push origin gh-pages
+```text
+https://SEU-PROJETO.vercel.app/manifest.json
 ```
 
----
+No launcher, va em Configuracoes > Launcher > Manifest do modpack e cole essa
+URL. Em desenvolvimento tambem funciona por variavel de ambiente:
 
-## 3) URLs finais
+```powershell
+$env:AETHERION_MANIFEST_URL="https://SEU-PROJETO.vercel.app/manifest.json"
+pnpm dev:electron
+```
 
-| Recurso | URL |
-|---|---|
-| Manifest | `https://aetherion-network.github.io/aetherion-launcher-assets/manifest.json` |
-| Mod `create-0.5.1f.jar` | `https://github.com/aetherion-network/aetherion-launcher-assets/releases/download/v0.3/create-0.5.1f.jar` |
-| Forge installer | `https://github.com/.../releases/download/v0.3/forge-1.19.2-43.3.13-installer.jar` |
-| Página do release (changelog) | `https://github.com/.../releases/tag/v0.3` |
+## 5. Como o updater aplica a atualizacao
 
-O launcher lê **apenas** a URL do manifest — todas as outras URLs chegam dentro
-dele. Para apontar para outro repo, mude `AETHERION_HOSTING` em
-`lib/launcher/github-releases.ts`.
+1. Baixa o manifest com cache-busting.
+2. Escaneia `forge/`, `mods/`, `config/`, `resourcepacks/` e `shaderpacks/`.
+3. Calcula SHA-256 streaming dos arquivos locais.
+4. Baixa arquivos ausentes ou com hash diferente.
+5. Valida o SHA-256 antes de renomear o arquivo final.
+6. Remove arquivos orfaos que sairam do manifest.
+7. Preserva `mods/dropin/`, `shaderpacks/` e `config/custom-*.toml`.
+8. Atualiza `instance-state.json`.
 
----
+## 6. Manifest exemplo
 
-## 4) Cache e cache-busting
+`public/manifest.example.json` e apenas um exemplo gerado sem os arquivos reais.
+Ele tem hashes placeholders e tamanho `0`, entao nao deve ser usado como
+manifest final do launcher.
 
-GitHub Pages coloca `Cache-Control: max-age=600` no `manifest.json`. O launcher
-já adiciona `?t={timestamp}` em cada fetch (ver `fetchManifest`) então você
-nunca pega versão antiga. Os **assets de release** têm URLs imutáveis por tag
-(`v0.3/x.jar` nunca muda), então podem ser cacheados forever.
+Para regenerar o exemplo:
 
----
-
-## 5) Atualização incremental — como funciona
-
-1. Launcher baixa `manifest.json` (pequeno, alguns KB).
-2. Escaneia a pasta local `Aetherion/mods/` e calcula SHA-256 de cada `.jar`.
-3. Para cada entrada do manifest:
-   - se hash local == hash remoto → `skip`
-   - senão → baixa de GitHub Releases e valida SHA-256 após download.
-4. Arquivos que saíram do manifest e não são drop-ins → `remove`.
-
-Resultado: uma atualização entre v0.3 → v0.4 que troca 2 mods baixa só esses
-2 arquivos, não o modpack inteiro.
-
----
-
-## 6) Rate limits
-
-- **GitHub Releases (downloads):** sem rate limit documentado. Contas pessoais
-  conseguem servir dezenas de milhares de downloads/mês sem problemas.
-- **GitHub Pages:** 100 GB de soft bandwidth/mês. Como `manifest.json` tem
-  poucos KB, é virtualmente ilimitado.
-- **GitHub API (se usar):** 60 req/h sem token, 5.000 req/h com token. O
-  launcher não precisa de API — acessa tudo via CDN direta.
-
----
-
-## 7) Assinatura de código do launcher (Windows)
-
-Sem assinatura, o Windows SmartScreen mostra aviso na primeira execução.
-Opções:
-
-- **SignPath.io (gratuito para OSS)** — o mais barato, exige o projeto ser
-  aberto.
-- **Certum CodeSign para OSS** — ~35 EUR/ano.
-- **Não assinar** — usuários clicam em "Mais informações → Executar assim mesmo".
-
-Assinatura não é requisito técnico, só reduz atrito no primeiro download.
+```powershell
+pnpm manifest:example
+```

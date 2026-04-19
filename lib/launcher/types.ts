@@ -215,6 +215,7 @@ export interface JavaSettings {
 
 export interface LauncherPreferences {
   updateChannel: "stable" | "beta"
+  manifestUrl?: string
   dataDirectory?: string
   minimizeToTray: boolean
   telemetry: boolean

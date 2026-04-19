@@ -1,182 +1,296 @@
 #!/usr/bin/env node
 /**
- * Aetherion — Build Manifest
+ * Aetherion - Build Manifest
  *
- * Gera o manifest.json a partir de uma pasta local com mods, configs e forge,
- * preenchendo URL (GitHub Releases), SHA-256 e size para cada arquivo.
+ * Gera manifest.json a partir de uma pasta local com Forge, mods e configs.
+ * O manifest gerado e o contrato que o Electron usa na Fase 3:
+ * baixar, validar SHA-256, aplicar opcionais e preservar drop-ins.
  *
- * Uso:
- *   node scripts/build-manifest.mjs \
- *     --version 0.3 \
- *     --mc 1.19.2 \
- *     --forge 43.3.13 \
- *     --in ./pack-v0.3 \
- *     --out ./manifest.json
+ * Uso real:
+ *   node scripts/build-manifest.mjs --in ./pack-v0.3 --out ./manifest.json
  *
- * Layout esperado dentro de --in:
- *   pack-v0.3/
- *     forge-1.19.2-43.3.13-installer.jar
- *     mods/
- *       required/    <-- vão como type: "required"
- *       optional/    <-- vão como type: "optional"
- *     config/        <-- vão como type: "config"
- *
- * Depois de gerar: faça upload da pasta inteira (exceto manifest.json, que
- * vai pro Pages) como assets do Release `v0.3` no GitHub.
- *
- * Este script só usa node:crypto + node:fs, sem dependências externas.
+ * Uso sem arquivos, para atualizar public/manifest.example.json:
+ *   node scripts/build-manifest.mjs --template --out ./public/manifest.example.json
  */
 
 import { createHash } from "node:crypto"
-import { readFile, readdir, stat, writeFile } from "node:fs/promises"
-import { join, posix, relative } from "node:path"
 import { createReadStream } from "node:fs"
+import { readdir, stat, writeFile } from "node:fs/promises"
+import { join, posix, relative } from "node:path"
 
-/* ------------------------- parse args ------------------------- */
-const args = Object.fromEntries(
-  process.argv
-    .slice(2)
-    .reduce((acc, cur, i, arr) => {
-      if (cur.startsWith("--")) acc.push([cur.slice(2), arr[i + 1]])
-      return acc
-    }, []),
-)
+const REQUIRED_MOD_FILENAMES = [
+  "AdvancementPlaques-1.19.2-1.4.7.jar",
+  "aeroblender-1.19.2-1.0.1.jar",
+  "aether-1.19.2-1.4.2-forge.jar",
+  "AI-Improvements-1.19.2-0.5.2.jar",
+  "alexsdelight-1.4.1.jar",
+  "alexsmobs-1.21.1.jar",
+  "AlltheCompatibility-1.19.2-(v.2.1.1b).jar",
+  "allthemodium-2.1.8-1.19.2-43.1.1.jar",
+  "alltheores-2.0.2-1.19.2-43.1.3.jar",
+  "Apotheosis-1.19.2-6.5.2.jar",
+  "apotheotic_additions1.0.4.jar",
+  "ApothicCurios-1.19.2-1.0.3c.jar",
+  "appleskin-forge-mc1.19-2.4.2.jar",
+  "Aquaculture-1.19.2-2.4.17.jar",
+  "aquamirae-6.API15.jar",
+  "architectury-6.6.92-forge.jar",
+  "ArmorDamageLimit-1.19.2-1.0.0.jar",
+  "ars_additions-1.19.2-1.4.0.jar",
+  "ars_elemental-1.19.2-0.5.9.4.1.jar",
+  "ars_nouveau-1.19.2-3.23.0.jar",
+  "atmospheric-1.19.2-5.1.2.jar",
+  "AttributeFix-Forge-1.19.2-17.2.8.jar",
+  "blueprint-1.19.2-6.2.0.jar",
+  "buildinggadgets-3.16.3-build.26+mc1.19.2.jar",
+  "citadel-2.1.4-1.19.jar",
+  "create-1.19.2-0.5.1.i.jar",
+  "Cucumber-1.19.2-6.0.11.jar",
+  "curios-forge-1.19.2-5.1.6.4.jar",
+  "easy-villagers-forge-1.19.2-1.1.23.jar",
+  "FarmersDelight-1.19.2-1.2.4.jar",
+  "ftb-library-forge-1902.4.1-build.236.jar",
+  "ftb-ultimine-forge-1902.4.2-build.14.jar",
+  "geckolib-forge-1.19-3.1.40.jar",
+  "Iceberg-1.19.2-forge-1.1.4.jar",
+  "L_Enders_Cataclysm-2.46-1.19.2.jar",
+  "lionfishapi-1.8.jar",
+  "Mekanism-1.19.2-10.3.9.13.jar",
+  "MysticalAgriculture-1.19.2-6.0.17.jar",
+  "obscure_api-15.jar",
+  "Patchouli-1.19.2-77.jar",
+  "Placebo-1.19.2-7.4.1.jar",
+  "sophisticatedbackpacks-1.19.2-3.20.2.1035.jar",
+  "sophisticatedcore-1.19.2-0.6.4.730.jar",
+  "sophisticatedstorage-1.19.2-0.9.8.1573.jar",
+  "TerraBlender-forge-1.19.2-2.0.1.166.jar",
+]
 
-const version = args.version ?? "0.1"
+const OPTIONAL_MOD_FILENAMES = [
+  "jei-1.19.2-forge-11.8.1.1034.jar",
+  "OptiFine_1.19.2_HD_U_I2.jar",
+]
+
+const DEFAULT_FORGE_SHA256 =
+  "4869e60456321e99eb5120ae39171c382c27a05858cdfd4b90ff123e3750e681"
+const DEFAULT_FORGE_SIZE = 7_180_192
+
+const args = parseArgs(process.argv.slice(2))
+const version = args.version ?? "0.3"
 const mcVersion = args.mc ?? "1.19.2"
-const forgeVersion = args.forge ?? "43.3.13"
-const inDir = args.in ?? "./pack"
+const forgeVersion = args.forge ?? "43.5.0"
+const inDir = args.in ?? `./pack-v${version}`
 const outFile = args.out ?? "./manifest.json"
-const ghOwner = args.owner ?? "aetherion-network"
-const ghRepo = args.repo ?? "aetherion-launcher-assets"
+const ghOwner = args.owner ?? "washryan"
+const ghRepo = args.repo ?? "launcheraetherion"
+const serverHost = args.server ?? "left-fcc.gl.joinmc.link"
+const siteUrl = args.site ?? `https://${ghOwner}.github.io/${ghRepo}/`
+const templateMode = Boolean(args.template)
+const strict = Boolean(args.strict)
+const baseUrl = `https://github.com/${ghOwner}/${ghRepo}/releases/download/v${version}`
 
-const BASE = `https://github.com/${ghOwner}/${ghRepo}/releases/download/v${version}`
+function parseArgs(values) {
+  const parsed = {}
+  for (let index = 0; index < values.length; index++) {
+    const current = values[index]
+    if (!current.startsWith("--")) continue
+    const key = current.slice(2)
+    const next = values[index + 1]
+    if (!next || next.startsWith("--")) parsed[key] = true
+    else {
+      parsed[key] = next
+      index++
+    }
+  }
+  return parsed
+}
 
-/* ------------------------- helpers ------------------------- */
-
-async function sha256File(path) {
-  return new Promise((resolve, reject) => {
-    const hash = createHash("sha256")
-    const stream = createReadStream(path, { highWaterMark: 1024 * 1024 })
-    stream.on("data", (c) => hash.update(c))
-    stream.on("end", () => resolve(hash.digest("hex")))
-    stream.on("error", reject)
-  })
+async function sha256File(filePath) {
+  const hash = createHash("sha256")
+  const stream = createReadStream(filePath, { highWaterMark: 1024 * 1024 })
+  for await (const chunk of stream) hash.update(chunk)
+  return hash.digest("hex")
 }
 
 async function walk(dir, acc = []) {
   const entries = await readdir(dir, { withFileTypes: true })
-  for (const e of entries) {
-    const full = join(dir, e.name)
-    if (e.isDirectory()) await walk(full, acc)
-    else acc.push(full)
+  for (const entry of entries) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) await walk(full, acc)
+    else if (entry.isFile()) acc.push(full)
   }
   return acc
 }
 
-async function entryFor(absPath, rootDir, type) {
-  const rel = relative(rootDir, absPath).split("\\").join("/")
-  const basename = posix.basename(rel)
-  const size = (await stat(absPath)).size
-  const sha256 = await sha256File(absPath)
+async function safeWalk(dir) {
+  return walk(dir).catch(() => [])
+}
+
+async function modEntry(absPath, filename, type, index) {
+  const fileStat = absPath ? await stat(absPath) : null
   return {
-    path: `${typeToFolder(type)}/${basename}`,
-    url: `${BASE}/${encodeURIComponent(basename)}`,
-    sha256,
-    size,
+    path: `mods/${filename}`,
+    url: releaseAssetUrl(filename),
+    sha256: absPath ? await sha256File(absPath) : placeholderSha(index),
+    size: fileStat?.size ?? 0,
     type,
-    name: basename.replace(/\.jar$/i, "").replace(/-[\d.]+$/, ""),
+    id: slugFor(filename),
+    name: filename.replace(/\.jar$/i, ""),
+    tag: type === "optional" ? "Opcional" : "Obrigatorio",
+    defaultEnabled: type === "optional" ? optionalDefault(filename) : undefined,
   }
 }
 
-function typeToFolder(type) {
-  if (type === "config") return "config"
-  return "mods"
+async function configEntry(absPath, rootDir, index) {
+  const filename = posix.basename(absPath.split("\\").join("/"))
+  const rel = relative(rootDir, absPath).split("\\").join("/")
+  const fileStat = await stat(absPath)
+  return {
+    path: rel,
+    url: releaseAssetUrl(filename),
+    sha256: await sha256File(absPath),
+    size: fileStat.size,
+    type: "config",
+  }
 }
 
-/* ------------------------- main ------------------------- */
+function releaseAssetUrl(filename) {
+  return `${baseUrl}/${encodeURIComponent(filename)}`
+}
 
-async function main() {
-  console.log(`[aetherion] building manifest v${version} (${mcVersion} / forge ${forgeVersion})`)
-  console.log(`[aetherion] scanning: ${inDir}`)
+function placeholderSha(index) {
+  return (index + 1).toString(16).padStart(2, "0").repeat(32)
+}
 
-  const files = []
+function slugFor(filename) {
+  return filename
+    .replace(/\.jar$/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+}
 
-  // Required mods
-  try {
-    const required = await walk(join(inDir, "mods", "required"))
-    for (const p of required) {
-      files.push(await entryFor(p, inDir, "required"))
+function optionalDefault(filename) {
+  return filename.toLowerCase().startsWith("jei-")
+}
+
+function fileMap(files) {
+  return new Map(files.map((file) => [posix.basename(file.split("\\").join("/")), file]))
+}
+
+async function officialModEntries(type, expectedFilenames, folder, startIndex) {
+  const found = templateMode ? new Map() : fileMap(await safeWalk(folder))
+  const entries = []
+
+  for (const [offset, filename] of expectedFilenames.entries()) {
+    const absPath = found.get(filename)
+    if (!absPath && !templateMode) {
+      const message = `faltando ${type}: ${filename}`
+      if (strict) throw new Error(message)
+      console.warn(`  (${message})`)
     }
-    console.log(`  required: ${required.length}`)
-  } catch {
-    console.warn(`  (pasta mods/required não encontrada)`)
+    entries.push(await modEntry(absPath, filename, type, startIndex + offset))
   }
 
-  // Optional mods
-  try {
-    const optional = await walk(join(inDir, "mods", "optional"))
-    for (const p of optional) {
-      const entry = await entryFor(p, inDir, "optional")
-      entry.defaultEnabled = true
-      files.push(entry)
+  if (!templateMode) {
+    const expected = new Set(expectedFilenames)
+    for (const [filename, absPath] of found.entries()) {
+      if (expected.has(filename)) continue
+      console.warn(`  (extra em ${folder}: ${filename})`)
+      entries.push(await modEntry(absPath, filename, type, startIndex + entries.length))
     }
-    console.log(`  optional: ${optional.length}`)
-  } catch {
-    console.warn(`  (pasta mods/optional não encontrada)`)
   }
 
-  // Configs
-  try {
-    const configs = await walk(join(inDir, "config"))
-    for (const p of configs) {
-      files.push(await entryFor(p, inDir, "config"))
-    }
-    console.log(`  configs: ${configs.length}`)
-  } catch {
-    console.warn(`  (pasta config não encontrada)`)
-  }
+  return entries
+}
 
-  // Forge installer
+async function buildFiles() {
+  const required = await officialModEntries(
+    "required",
+    REQUIRED_MOD_FILENAMES,
+    join(inDir, "mods", "required"),
+    0,
+  )
+  const optional = await officialModEntries(
+    "optional",
+    OPTIONAL_MOD_FILENAMES,
+    join(inDir, "mods", "optional"),
+    required.length,
+  )
+  const configRoot = join(inDir, "config")
+  const configs = templateMode
+    ? []
+    : await Promise.all(
+        (await safeWalk(configRoot)).map((file, index) =>
+          configEntry(file, inDir, required.length + optional.length + index),
+        ),
+      )
+
+  return [...required, ...optional, ...configs]
+}
+
+async function buildForgeEntry() {
   const forgeFilename = `forge-${mcVersion}-${forgeVersion}-installer.jar`
   const forgePath = join(inDir, forgeFilename)
-  const forgeStat = await stat(forgePath).catch(() => null)
-  if (!forgeStat) {
-    throw new Error(`Forge installer não encontrado: ${forgePath}`)
+  const forgeStat = templateMode ? null : await stat(forgePath).catch(() => null)
+  if (!templateMode && !forgeStat) {
+    throw new Error(`Forge installer nao encontrado: ${forgePath}`)
   }
-  const forgeSha = await sha256File(forgePath)
 
+  return {
+    version: forgeVersion,
+    url: releaseAssetUrl(forgeFilename),
+    sha256: templateMode ? DEFAULT_FORGE_SHA256 : await sha256File(forgePath),
+    size: forgeStat?.size ?? DEFAULT_FORGE_SIZE,
+    installedProfile: `${mcVersion}-forge-${forgeVersion}`,
+  }
+}
+
+async function main() {
+  console.log(
+    `[aetherion] building manifest v${version} (${mcVersion} / forge ${forgeVersion})`,
+  )
+  if (templateMode) console.log("[aetherion] template mode: usando hashes placeholders")
+  else console.log(`[aetherion] scanning: ${inDir}`)
+
+  const files = await buildFiles()
   const manifest = {
     $schema: `https://${ghOwner}.github.io/${ghRepo}/manifest.schema.json`,
     version,
     minecraft: mcVersion,
     name: "Aetherion Main",
     instanceId: "aetherion-main",
-    publishedAt: new Date().toISOString(),
+    publishedAt:
+      args.publishedAt ?? (templateMode ? "2026-04-19T00:00:00.000Z" : new Date().toISOString()),
+    changelog:
+      "- Launcher Electron inicia Minecraft/Forge 1.19.2\n- Configuracoes de Java e Minecraft persistentes\n- Lista inicial de mods Aetherion cadastrada",
     requiredLauncherVersion: "0.1.0",
-    forge: {
-      version: forgeVersion,
-      url: `${BASE}/${encodeURIComponent(forgeFilename)}`,
-      sha256: forgeSha,
-      size: forgeStat.size,
-      installedProfile: `${mcVersion}-forge-${forgeVersion}`,
-    },
+    forge: await buildForgeEntry(),
     files,
     java: { recommendedMajor: 17, minMajor: 17 },
     endpoints: {
-      serverHost: "play.aetherion.gg",
+      serverHost,
       serverPort: 25565,
-      site: `https://${ghOwner}.github.io/${ghRepo}/`,
+      site: siteUrl,
+      discord: "https://discord.gg/aetherion",
+      youtube: "https://youtube.com/@aetherion",
     },
-    protectedPatterns: ["mods/*-SERVER.jar", "config/custom-*.toml"],
+    protectedPatterns: ["mods/dropin/*", "shaderpacks/*", "config/custom-*.toml"],
   }
 
-  await writeFile(outFile, JSON.stringify(manifest, null, 2) + "\n", "utf8")
+  await writeFile(outFile, `${JSON.stringify(manifest, null, 2)}\n`, "utf8")
   console.log(`[aetherion] wrote ${outFile}`)
-  console.log(`[aetherion] upload estes arquivos como assets de v${version}:`)
-  console.log(`  - ${forgeFilename}`)
-  for (const f of files) console.log(`  - ${posix.basename(f.path)}`)
-  console.log(`[aetherion] e envie ${outFile} para a branch gh-pages ou pasta /docs`)
+  console.log(
+    `[aetherion] files: ${files.filter((file) => file.type === "required").length} required, ${
+      files.filter((file) => file.type === "optional").length
+    } optional, ${files.filter((file) => file.type === "config").length} config`,
+  )
+
+  if (!templateMode) {
+    console.log("[aetherion] upload como assets do release:")
+    console.log(`  - forge-${mcVersion}-${forgeVersion}-installer.jar`)
+    for (const file of files) console.log(`  - ${posix.basename(file.path)}`)
+  }
 }
 
 main().catch((err) => {

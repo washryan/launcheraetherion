@@ -55,6 +55,7 @@ const DEFAULT_SETTINGS = {
   },
   launcher: {
     updateChannel: "stable",
+    manifestUrl: process.env.AETHERION_MANIFEST_URL || "",
     minimizeToTray: false,
     telemetry: false,
   },
@@ -491,6 +492,10 @@ function sanitizeLauncherSettings(value) {
     },
     launcher: {
       updateChannel: "stable",
+      manifestUrl:
+        typeof launcher.manifestUrl === "string"
+          ? launcher.manifestUrl.trim()
+          : DEFAULT_SETTINGS.launcher.manifestUrl,
       dataDirectory:
         typeof launcher.dataDirectory === "string" && launcher.dataDirectory.trim()
           ? launcher.dataDirectory
@@ -537,7 +542,7 @@ async function runUpdater(args, signal) {
     message: `Buscando manifest (${LAUNCH_TARGET.minecraft} + Forge ${LAUNCH_TARGET.forge})...`,
   })
 
-  const manifest = await loadManifest(signal)
+  const manifest = await loadManifest(settings, signal)
   validateManifest(manifest)
 
   const instanceId = manifest.instanceId || launchArgs.instanceId || "aetherion-main"
@@ -1422,8 +1427,11 @@ async function ensureLauncherProfile(root) {
   await fs.writeFile(profilePath, `${JSON.stringify(profile, null, 2)}\n`, "utf8")
 }
 
-async function loadManifest(signal) {
-  const url = process.env.AETHERION_MANIFEST_URL
+async function loadManifest(settings, signal) {
+  const url =
+    typeof settings?.launcher?.manifestUrl === "string" && settings.launcher.manifestUrl.trim()
+      ? settings.launcher.manifestUrl.trim()
+      : process.env.AETHERION_MANIFEST_URL
   if (!url) return DEFAULT_MANIFEST
 
   const cacheBust = `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`

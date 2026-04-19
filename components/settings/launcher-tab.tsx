@@ -1,16 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { FileText, FolderOpen, HardDrive, RotateCcw, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import {
   SettingsRow,
@@ -20,32 +13,55 @@ import { DEFAULT_SETTINGS } from "@/lib/launcher/mock-data"
 
 export function LauncherTab() {
   const [prefs, setPrefs] = useState(DEFAULT_SETTINGS.launcher)
+  const [status, setStatus] = useState("Configuracoes locais prontas.")
+
+  useEffect(() => {
+    window.aetherion?.settings
+      ?.get()
+      .then((settings) => setPrefs(settings.launcher))
+      .catch((err) => {
+        console.warn("[aetherion] failed to load launcher settings", err)
+        setStatus(err instanceof Error ? err.message : String(err))
+      })
+  }, [])
+
+  function updatePrefs(next: typeof prefs | ((current: typeof prefs) => typeof prefs)) {
+    setPrefs((current) => {
+      const resolved = typeof next === "function" ? next(current) : next
+      window.aetherion?.settings
+        ?.update({ launcher: resolved })
+        .then((settings) => {
+          setPrefs(settings.launcher)
+          setStatus("Configuracoes salvas.")
+        })
+        .catch((err) => {
+          console.warn("[aetherion] failed to save launcher settings", err)
+          setStatus(err instanceof Error ? err.message : String(err))
+        })
+      return resolved
+    })
+  }
 
   return (
     <>
       <SettingsSection
-        title="Atualizações"
-        description="Controla como o próprio launcher se atualiza."
+        title="Manifest do modpack"
+        description="URL publica que o launcher usa para baixar Forge, mods, configs e atualizacoes."
       >
         <SettingsRow
-          label="Canal de atualização"
-          description="Beta recebe novidades antes, mas pode ter instabilidades."
+          label="URL do manifest"
+          description="Deixe vazio para usar o manifest local de desenvolvimento."
         >
-          <Select
-            value={prefs.updateChannel}
-            onValueChange={(v: "stable" | "beta") =>
-              setPrefs((p) => ({ ...p, updateChannel: v }))
+          <Input
+            value={prefs.manifestUrl ?? ""}
+            onChange={(event) =>
+              updatePrefs((p) => ({ ...p, manifestUrl: event.target.value }))
             }
-          >
-            <SelectTrigger className="w-36 h-9 bg-input/40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="stable">Estável</SelectItem>
-              <SelectItem value="beta">Beta</SelectItem>
-            </SelectContent>
-          </Select>
+            placeholder="https://seu-site.vercel.app/manifest.json"
+            className="w-[360px] h-9 bg-input/40 font-mono text-xs"
+          />
         </SettingsRow>
+        <p className="text-[11px] text-muted-foreground">{status}</p>
 
         <SettingsRow
           label="Minimizar para a bandeja"
@@ -53,30 +69,30 @@ export function LauncherTab() {
         >
           <Switch
             checked={prefs.minimizeToTray}
-            onCheckedChange={(v) => setPrefs((p) => ({ ...p, minimizeToTray: v }))}
+            onCheckedChange={(v) => updatePrefs((p) => ({ ...p, minimizeToTray: v }))}
           />
         </SettingsRow>
 
         <SettingsRow
-          label="Telemetria anônima"
-          description="Ajuda a detectar crashes e bugs. Nenhum dado pessoal é enviado."
+          label="Telemetria anonima"
+          description="Ajuda a detectar crashes e bugs. Nenhum dado pessoal e enviado."
         >
           <Switch
             checked={prefs.telemetry}
-            onCheckedChange={(v) => setPrefs((p) => ({ ...p, telemetry: v }))}
+            onCheckedChange={(v) => updatePrefs((p) => ({ ...p, telemetry: v }))}
           />
         </SettingsRow>
       </SettingsSection>
 
       <SettingsSection
         title="Armazenamento"
-        description="Instâncias, mods baixados, caches e logs ficam aqui."
+        description="Instancias, mods baixados, caches e logs ficam aqui."
       >
         <div className="flex items-center gap-2">
           <HardDrive className="size-4 text-muted-foreground shrink-0" />
           <Input
             readOnly
-            value={prefs.dataDirectory ?? "%APPDATA%\\.aetherion"}
+            value={prefs.dataDirectory ?? "%APPDATA%\\Aetherion Launcher"}
             className="flex-1 h-9 bg-input/40 font-mono text-xs"
           />
           <Button variant="outline" size="sm" className="h-9 gap-2 bg-transparent">
@@ -94,7 +110,7 @@ export function LauncherTab() {
           <ActionCard
             icon={<Trash2 className="size-4" />}
             title="Limpar cache"
-            description="Remove downloads temporários e thumbnails."
+            description="Remove downloads temporarios e thumbnails."
           />
           <ActionCard
             icon={<FileText className="size-4" />}
@@ -107,9 +123,9 @@ export function LauncherTab() {
       <SettingsSection title="Sobre">
         <div className="rounded-lg border border-border/50 bg-card/40 p-5 space-y-3">
           <InfoLine label="Launcher" value="Aetherion v0.1.0" />
-          <InfoLine label="Build" value="2026.04.18" />
-          <InfoLine label="Electron" value="— (Fase 5)" muted />
-          <InfoLine label="Node" value="— (Fase 5)" muted />
+          <InfoLine label="Build" value="2026.04.19" />
+          <InfoLine label="Electron" value="Real" />
+          <InfoLine label="Node" value="Runtime local" />
         </div>
       </SettingsSection>
     </>

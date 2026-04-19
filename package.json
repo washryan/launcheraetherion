@@ -8,6 +8,8 @@
     "dev:electron": "concurrently -k -n next,electron -c cyan,magenta \"pnpm dev\" \"wait-on http://localhost:3000/launcher && electron .\"",
     "electron": "electron .",
     "build": "next build",
+    "manifest:build": "node scripts/build-manifest.mjs --version 0.3 --mc 1.19.2 --forge 43.5.0 --in ./pack-v0.3 --out ./manifest.json --owner washryan --repo launcheraetherion",
+    "manifest:example": "node scripts/build-manifest.mjs --template --out ./public/manifest.example.json --owner washryan --repo launcheraetherion",
     "start": "next start",
     "lint": "eslint ."
   },

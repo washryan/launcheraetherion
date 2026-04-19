@@ -60,6 +60,7 @@ export const DEFAULT_SETTINGS: LauncherSettings = {
   },
   launcher: {
     updateChannel: "stable",
+    manifestUrl: "",
     minimizeToTray: true,
     telemetry: false,
   },
