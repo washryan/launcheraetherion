@@ -340,12 +340,17 @@ async function installForgeIfNeeded(root, manifest, localState, signal) {
     phase: "checking-java",
     message: "Procurando Java 17 no sistema...",
   })
-  const java = await findJava(manifest.java?.minMajor || 17)
+  const java = await findJava(
+    manifest.java?.minMajor || 17,
+    manifest.java?.recommendedMajor || manifest.java?.minMajor || 17,
+  )
   if (!java) {
     throw new Error(
       "Java 17 nao encontrado. Instale o Eclipse Temurin/OpenJDK 17 ou configure JAVA_HOME.",
     )
   }
+
+  await ensureLauncherProfile(root)
 
   emitLaunchProgress({
     phase: "installing-forge",
@@ -378,6 +383,25 @@ async function installForgeIfNeeded(root, manifest, localState, signal) {
   })
 
   return targetSha
+}
+
+async function ensureLauncherProfile(root) {
+  const profilePath = path.join(root, "launcher_profiles.json")
+  if (fsSync.existsSync(profilePath)) return
+
+  const profile = {
+    profiles: {},
+    selectedProfile: "",
+    clientToken: crypto.randomUUID(),
+    authenticationDatabase: {},
+    launcherVersion: {
+      name: "Aetherion Launcher",
+      format: 21,
+      profilesFormat: 2,
+    },
+  }
+
+  await fs.writeFile(profilePath, `${JSON.stringify(profile, null, 2)}\n`, "utf8")
 }
 
 async function loadManifest(signal) {
@@ -580,7 +604,7 @@ async function executeUpdatePlan(root, plan, signal) {
   })
 }
 
-async function findJava(minMajor) {
+async function findJava(minMajor, preferredMajor = minMajor) {
   const candidates = uniqueTruthy([
     process.env.AETHERION_JAVA_PATH,
     process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", javaExecutableName()) : null,
@@ -610,13 +634,22 @@ async function findJava(minMajor) {
   }
 
   const seen = new Set()
+  const compatible = []
   for (const candidate of candidates) {
     if (seen.has(candidate)) continue
     seen.add(candidate)
     const result = await inspectJava(candidate)
-    if (result && result.major >= minMajor) return result
+    if (result && result.major >= minMajor) compatible.push(result)
   }
-  return null
+
+  return (
+    compatible.sort((a, b) => {
+      const aExact = a.major === preferredMajor ? 0 : 1
+      const bExact = b.major === preferredMajor ? 0 : 1
+      if (aExact !== bExact) return aExact - bExact
+      return Math.abs(a.major - preferredMajor) - Math.abs(b.major - preferredMajor)
+    })[0] || null
+  )
 }
 
 function javaExecutableName() {
@@ -692,12 +725,17 @@ function runProcess(command, args, options, signal, onLine) {
       shell: false,
     })
     let tail = ""
+    const recentLines = []
 
     const handleData = (chunk) => {
       tail += chunk.toString()
       const lines = tail.split(/\r?\n/)
       tail = lines.pop() || ""
-      for (const line of lines) onLine?.(line)
+      for (const line of lines) {
+        recentLines.push(line)
+        if (recentLines.length > 12) recentLines.shift()
+        onLine?.(line)
+      }
     }
 
     const abort = () => {
@@ -714,9 +752,20 @@ function runProcess(command, args, options, signal, onLine) {
     })
     child.on("close", (code) => {
       signal?.removeEventListener("abort", abort)
-      if (tail.trim()) onLine?.(tail.trim())
+      if (tail.trim()) {
+        recentLines.push(tail.trim())
+        onLine?.(tail.trim())
+      }
       if (code === 0) resolve()
-      else reject(new Error(`Processo terminou com codigo ${code}.`))
+      else {
+        const details = recentLines.map((line) => line.trim()).filter(Boolean).join("\n")
+        reject(
+          new Error(
+            `Processo terminou com codigo ${code}.` +
+              (details ? `\n\nUltimas linhas do instalador:\n${details}` : ""),
+          ),
+        )
+      }
     })
   })
 }
