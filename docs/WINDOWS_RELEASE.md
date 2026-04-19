@@ -2,6 +2,15 @@
 
 Este fluxo faz o botao de download do site parar de cair em 404.
 
+## Precisa criar GitHub App?
+
+Nao. Para este projeto, use um destes caminhos:
+
+- Recomendado: GitHub Actions com `GITHUB_TOKEN` automatico do proprio repositorio.
+- Alternativo: Personal Access Token na sua maquina, usando `pnpm release:win`.
+
+GitHub App so vale a pena quando voce quer criar uma integracao instalavel para muitos repositorios ou usuarios.
+
 ## Por que acontece 404?
 
 O site aponta para este padrao:
@@ -17,7 +26,46 @@ Esse link so existe quando:
 
 Enquanto o asset nao for enviado para o release, o GitHub responde 404.
 
-## Passo a passo
+## Caminho recomendado: GitHub Actions
+
+Esse caminho nao exige token local.
+
+1. Garanta que as Actions podem criar releases:
+
+- GitHub > repositorio `washryan/launcheraetherion`
+- Settings > Actions > General
+- Workflow permissions
+- marque `Read and write permissions`
+- salve
+
+2. Crie e envie uma tag:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+3. Abra:
+
+```txt
+https://github.com/washryan/launcheraetherion/actions
+```
+
+4. Aguarde o workflow `Build Windows Release` terminar.
+
+5. Teste o link:
+
+```txt
+https://github.com/washryan/launcheraetherion/releases/download/v0.1.0/Aetherion%20Launcher%20Setup%200.1.0.exe
+```
+
+Se o download iniciar, o site `/download` tambem vai funcionar.
+
+### Publicar manualmente pela aba Actions
+
+Tambem da para abrir o workflow `Build Windows Release`, clicar em `Run workflow` e informar `v0.1.0`.
+
+## Caminho alternativo: token local
 
 1. Gere o instalador local:
 

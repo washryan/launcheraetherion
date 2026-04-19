@@ -15,6 +15,7 @@
     "manifest:publish": "node scripts/build-manifest.mjs --strict --version 0.3 --mc 1.19.2 --forge 43.5.0 --in ./pack-v0.3 --out ./public/manifest.json --owner washryan --repo launcheraetherion",
     "manifest:example": "node scripts/build-manifest.mjs --template --out ./public/manifest.example.json --owner washryan --repo launcheraetherion",
     "build:win": "pnpm manifest:publish && pnpm build && electron-builder --win nsis --x64",
+    "build:win:ci": "pnpm build && electron-builder --win nsis --x64",
     "release:win": "pnpm build:win && powershell -ExecutionPolicy Bypass -File scripts/publish-windows-release.ps1",
     "start": "next start",
     "lint": "eslint ."
