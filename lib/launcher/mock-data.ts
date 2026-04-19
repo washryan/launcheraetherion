@@ -63,8 +63,8 @@ export const DEFAULT_SETTINGS: LauncherSettings = {
     closeOnLaunch: false,
   },
   java: {
-    minRamMb: 4096,
-    maxRamMb: 10240,
+    minRamMb: 2048,
+    maxRamMb: 4096,
     executablePath: "C:\\Program Files\\Eclipse Adoptium\\jdk-17\\bin\\javaw.exe",
     jvmArgs:
       "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions",

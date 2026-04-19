@@ -50,6 +50,8 @@ declare global {
       java: {
         detect: () => Promise<{
           totalRamMb: number
+          freeRamMb: number
+          safeMaxRamMb: number
           java: {
             path: string
             major: number

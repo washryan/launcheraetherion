@@ -47,8 +47,8 @@ const DEFAULT_SETTINGS = {
     closeOnLaunch: false,
   },
   java: {
-    minRamMb: 4096,
-    maxRamMb: 8192,
+    minRamMb: 2048,
+    maxRamMb: 4096,
     executablePath: "",
     jvmArgs: "",
     autoDownloadRuntime: true,
@@ -191,9 +191,10 @@ ipcMain.handle("settings:openInstanceFolder", async () => {
 })
 ipcMain.handle("java:detect", async () => {
   const settings = await readLauncherSettings()
+  const memory = systemMemoryInfo()
   const java = await resolveJavaForSettings(settings.java, 17, 17)
   return {
-    totalRamMb: systemRamMb(),
+    ...memory,
     java,
   }
 })
@@ -377,13 +378,18 @@ function sanitizeLauncherSettings(value) {
   )
   const closeOnLaunch = Boolean(minecraft.closeOnLaunch)
   const instanceId = DEFAULT_MANIFEST.instanceId || "aetherion-main"
-  const totalRam = systemRamMb()
-  const minRamMb = clampNumber(java.minRamMb, 512, totalRam, DEFAULT_SETTINGS.java.minRamMb)
+  const memory = systemMemoryInfo()
+  const minRamMb = clampNumber(
+    java.minRamMb,
+    512,
+    memory.safeMaxRamMb,
+    DEFAULT_SETTINGS.java.minRamMb,
+  )
   const maxRamMb = clampNumber(
     java.maxRamMb,
     1024,
-    totalRam,
-    Math.min(DEFAULT_SETTINGS.java.maxRamMb, totalRam),
+    memory.safeMaxRamMb,
+    Math.min(DEFAULT_SETTINGS.java.maxRamMb, memory.safeMaxRamMb),
   )
 
   return {
@@ -425,6 +431,27 @@ function sanitizeLauncherSettings(value) {
 
 function systemRamMb() {
   return Math.max(1024, Math.floor(os.totalmem() / 1024 / 1024))
+}
+
+function systemMemoryInfo() {
+  const totalRamMb = systemRamMb()
+  const freeRamMb = Math.max(0, Math.floor(os.freemem() / 1024 / 1024))
+  const safeByTotal = totalRamMb - 4096
+  const safeByFree = freeRamMb - 2048
+  const safeMaxRamMb = roundDownToStep(
+    Math.max(2048, Math.min(12288, safeByTotal, safeByFree)),
+    512,
+  )
+
+  return {
+    totalRamMb,
+    freeRamMb,
+    safeMaxRamMb,
+  }
+}
+
+function roundDownToStep(value, step) {
+  return Math.max(step, Math.floor(value / step) * step)
 }
 
 function settingsPath() {
@@ -621,6 +648,8 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
   const memoryArgs = [
     `-Xms${javaSettings.minRamMb}M`,
     `-Xmx${javaSettings.maxRamMb}M`,
+    `-XX:ErrorFile=${path.join(root, "logs", "hs_err_pid%p.log")}`,
+    `-XX:HeapDumpPath=${path.join(root, "logs")}`,
     ...parseJvmArgs(javaSettings.jvmArgs),
   ]
   const jvmArgs = [

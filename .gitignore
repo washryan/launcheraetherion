@@ -16,3 +16,4 @@ node_modules
 .next/
 tsconfig.tsbuildinfo
 .DS_Store
+hs_err_pid*.log
