@@ -10,7 +10,7 @@ const path = require("node:path")
 const isDev = !app.isPackaged
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,16}$/
 const LAUNCHER_NAME = "AetherionLauncher"
-const LAUNCHER_VERSION = "0.1.0"
+const LAUNCHER_VERSION = "0.2.0"
 const MOJANG_VERSION_MANIFEST =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 const MINECRAFT_RESOURCES_BASE = "https://resources.download.minecraft.net"
@@ -21,12 +21,12 @@ const LAUNCH_TARGET = {
 }
 const FORGE_INSTALLER_FILENAME = `forge-${LAUNCH_TARGET.minecraft}-${LAUNCH_TARGET.forge}-installer.jar`
 const DEFAULT_MANIFEST = {
-  version: "0.1.0-dev",
+  version: "0.2.0-dev",
   minecraft: LAUNCH_TARGET.minecraft,
   name: "Aetherion Main",
   instanceId: "aetherion-main",
   publishedAt: "2026-04-19T00:00:00.000Z",
-  requiredLauncherVersion: "0.1.0",
+  requiredLauncherVersion: "0.2.0",
   forge: {
     version: LAUNCH_TARGET.forge,
     url: `https://maven.minecraftforge.net/net/minecraftforge/forge/${LAUNCH_TARGET.minecraft}-${LAUNCH_TARGET.forge}/${FORGE_INSTALLER_FILENAME}`,
@@ -124,9 +124,7 @@ function registerStaticAppProtocol() {
     let pathname = decodeURIComponent(url.pathname)
 
     if (!pathname || pathname === "/") pathname = "/launcher/"
-    if (pathname.endsWith("/")) pathname = `${pathname}index.html`
-
-    const filePath = safeStaticPath(outRoot, pathname)
+    const filePath = resolveStaticAppPath(outRoot, pathname)
     if (!filePath || !fsSync.existsSync(filePath)) {
       return new Response("Arquivo nao encontrado.", { status: 404 })
     }
@@ -136,6 +134,26 @@ function registerStaticAppProtocol() {
       headers: { "content-type": contentTypeFor(filePath) },
     })
   })
+}
+
+function resolveStaticAppPath(root, requestPath) {
+  const normalized = requestPath && requestPath !== "/" ? requestPath : "/launcher/"
+  const directPath = normalized.endsWith("/") ? `${normalized}index.html` : normalized
+  const directFile = safeStaticPath(root, directPath)
+
+  if (directFile && fsSync.existsSync(directFile)) {
+    const stat = fsSync.statSync(directFile)
+    if (stat.isFile()) return directFile
+    if (stat.isDirectory()) {
+      const indexFile = path.join(directFile, "index.html")
+      if (fsSync.existsSync(indexFile)) return indexFile
+    }
+  }
+
+  const directoryIndex = safeStaticPath(root, `${normalized}/index.html`)
+  if (directoryIndex && fsSync.existsSync(directoryIndex)) return directoryIndex
+
+  return directFile
 }
 
 function contentTypeFor(filePath) {
@@ -505,10 +523,14 @@ function createOfflineAccount(username) {
     type: "offline",
     username: clean,
     uuid,
-    avatarUrl: `https://mc-heads.net/avatar/${encodeURIComponent(clean)}/64`,
+    avatarUrl: minecraftHeadUrl(clean),
     addedAt: new Date().toISOString(),
     lastUsedAt: new Date().toISOString(),
   }
+}
+
+function minecraftHeadUrl(username) {
+  return `https://minotar.net/helm/${encodeURIComponent(username)}/64.png`
 }
 
 function offlineUuidFor(username) {
@@ -541,15 +563,23 @@ async function writeAccountsState(state) {
 
 function sanitizeAccountsState(value) {
   const accounts = Array.isArray(value?.accounts)
-    ? value.accounts.filter((account) => {
-        return (
-          account &&
-          (account.type === "offline" || account.type === "microsoft") &&
-          typeof account.id === "string" &&
-          typeof account.username === "string" &&
-          typeof account.uuid === "string"
-        )
-      })
+    ? value.accounts
+        .filter((account) => {
+          return (
+            account &&
+            (account.type === "offline" || account.type === "microsoft") &&
+            typeof account.id === "string" &&
+            typeof account.username === "string" &&
+            typeof account.uuid === "string"
+          )
+        })
+        .map((account) => ({
+          ...account,
+          avatarUrl:
+            account.type === "offline" && isGeneratedAvatarUrl(account.avatarUrl)
+              ? minecraftHeadUrl(account.username)
+              : account.avatarUrl || minecraftHeadUrl(account.username),
+        }))
     : []
 
   const activeId =
@@ -559,6 +589,14 @@ function sanitizeAccountsState(value) {
       : accounts[0]?.id ?? null
 
   return { activeId, accounts }
+}
+
+function isGeneratedAvatarUrl(value) {
+  return (
+    typeof value !== "string" ||
+    value.includes("mc-heads.net/avatar/") ||
+    value.includes("minotar.net/helm/")
+  )
 }
 
 function accountsPath() {

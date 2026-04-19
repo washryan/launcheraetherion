@@ -16,13 +16,13 @@ GitHub App so vale a pena quando voce quer criar uma integracao instalavel para 
 O site aponta para este padrao:
 
 ```txt
-https://github.com/washryan/launcheraetherion/releases/download/v0.1.0/Aetherion.Launcher.Setup.0.1.0.exe
+https://github.com/washryan/launcheraetherion/releases/download/v0.2.0/Aetherion.Launcher.Setup.0.2.0.exe
 ```
 
 Esse link so existe quando:
 
-1. Existe um GitHub Release com a tag `v0.1.0`.
-2. Esse release tem um asset chamado exatamente `Aetherion.Launcher.Setup.0.1.0.exe`.
+1. Existe um GitHub Release com a tag `v0.2.0`.
+2. Esse release tem um asset chamado exatamente `Aetherion.Launcher.Setup.0.2.0.exe`.
 
 Enquanto o asset nao for enviado para o release, o GitHub responde 404.
 
@@ -41,8 +41,8 @@ Esse caminho nao exige token local.
 2. Crie e envie uma tag:
 
 ```powershell
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 3. Abra:
@@ -56,14 +56,14 @@ https://github.com/washryan/launcheraetherion/actions
 5. Teste o link:
 
 ```txt
-https://github.com/washryan/launcheraetherion/releases/download/v0.1.0/Aetherion.Launcher.Setup.0.1.0.exe
+https://github.com/washryan/launcheraetherion/releases/download/v0.2.0/Aetherion.Launcher.Setup.0.2.0.exe
 ```
 
 Se o download iniciar, o site `/download` tambem vai funcionar.
 
 ### Publicar manualmente pela aba Actions
 
-Tambem da para abrir o workflow `Build Windows Release`, clicar em `Run workflow` e informar `v0.1.0`.
+Tambem da para abrir o workflow `Build Windows Release`, clicar em `Run workflow` e informar `v0.2.0`.
 
 ## Caminho alternativo: token local
 
@@ -76,7 +76,7 @@ pnpm build:win
 2. Confirme que o arquivo existe:
 
 ```powershell
-Get-Item ".\dist\Aetherion.Launcher.Setup.0.1.0.exe"
+Get-Item ".\dist\Aetherion.Launcher.Setup.0.2.0.exe"
 ```
 
 3. Crie um token no GitHub:
@@ -100,7 +100,7 @@ pnpm release:win
 6. Teste o link:
 
 ```txt
-https://github.com/washryan/launcheraetherion/releases/download/v0.1.0/Aetherion.Launcher.Setup.0.1.0.exe
+https://github.com/washryan/launcheraetherion/releases/download/v0.2.0/Aetherion.Launcher.Setup.0.2.0.exe
 ```
 
 Se o download iniciar, o site `/download` tambem vai funcionar.

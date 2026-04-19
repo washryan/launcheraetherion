@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { AlertCircle, Check, Plus, Trash2, UserPlus, X } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +24,7 @@ import { cn } from "@/lib/utils"
  * `%APPDATA%/.aetherion/accounts.json` via `window.aetherion.accounts.*`.
  */
 export function AccountTab() {
+  const router = useRouter()
   const [state, setState] = useState<AccountsState>(() => ({
     activeId: MOCK_ACCOUNTS[0]?.id ?? null,
     accounts: MOCK_ACCOUNTS,
@@ -69,11 +71,14 @@ export function AccountTab() {
   async function handleRemove(id: string) {
     setError(null)
     try {
+      let next: AccountsState
       if (window.aetherion?.accounts) {
-        setState(await window.aetherion.accounts.remove(id))
+        next = await window.aetherion.accounts.remove(id)
       } else {
-        setState((prev) => removeAccountLib(prev, id))
+        next = removeAccountLib(state, id)
       }
+      setState(next)
+      if (next.accounts.length === 0) router.replace("/login")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao remover conta.")
     }
@@ -98,6 +103,24 @@ export function AccountTab() {
     )
   }
 
+  function handleMicrosoftLogin() {
+    if (!window.aetherion?.accounts?.addMicrosoft) {
+      setError("Login Microsoft sera implementado no processo Electron.")
+      return
+    }
+
+    window.aetherion.accounts
+      .addMicrosoft()
+      .then(setState)
+      .catch((e) =>
+        setError(
+          e instanceof Error
+            ? e.message
+            : "Login Microsoft ainda nao esta disponivel neste build.",
+        ),
+      )
+  }
+
   return (
     <div className="space-y-6">
       {/* Ações */}
@@ -107,7 +130,7 @@ export function AccountTab() {
             label="Conta Microsoft"
             description="Login oficial com OAuth"
             icon={<UserPlus className="size-4" />}
-            onClick={handleMicrosoftStub}
+            onClick={handleMicrosoftLogin}
           />
           <AddAccountButton
             label="Conta Offline"

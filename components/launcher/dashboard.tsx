@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Cog, Disc, Globe, LogIn, Play, Youtube } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -21,7 +22,8 @@ import { AetherionMark } from "./aetherion-mark"
 import { LaunchProgressOverlay } from "./launch-progress"
 
 export function Dashboard() {
-  const [activeAccount, setActiveAccount] = useState<Account>(MOCK_ACCOUNTS[0])
+  const router = useRouter()
+  const [activeAccount, setActiveAccount] = useState<Account | null>(MOCK_ACCOUNTS[0])
   const [settings, setSettings] = useState<LauncherSettings>(DEFAULT_SETTINGS)
   const [progress, setProgress] = useState<LaunchProgress | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -36,6 +38,10 @@ export function Dashboard() {
           state.accounts.find((account: Account) => account.id === state.activeId) ??
           state.accounts[0]
         if (active) setActiveAccount(active)
+        else {
+          setActiveAccount(null)
+          router.replace("/login")
+        }
       })
       .catch((err) => console.warn("[aetherion] failed to load account", err))
   }, [])
@@ -54,6 +60,10 @@ export function Dashboard() {
   // que percorre TODAS as fases reais do pipeline.
   async function handleLaunch() {
     const controller = new AbortController()
+    if (!activeAccount) {
+      router.push("/login")
+      return
+    }
     abortRef.current = controller
     setProgress({ phase: "fetching-manifest", message: "Iniciando..." })
 
@@ -127,11 +137,17 @@ export function Dashboard() {
             </div>
           </div>
 
-          <AccountBadge
-            username={activeAccount.username}
-            avatarUrl={activeAccount.avatarUrl}
-            type={activeAccount.type}
-          />
+          {activeAccount ? (
+            <AccountBadge
+              username={activeAccount.username}
+              avatarUrl={activeAccount.avatarUrl}
+              type={activeAccount.type}
+            />
+          ) : (
+            <Button asChild variant="outline" className="bg-card/60">
+              <Link href="/login">Entrar</Link>
+            </Button>
+          )}
         </div>
 
         <div className="flex-1 flex items-center justify-center">

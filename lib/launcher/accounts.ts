@@ -79,7 +79,7 @@ export async function addOfflineAccount(
     type: "offline",
     username: clean,
     uuid,
-    avatarUrl: `https://mc-heads.net/avatar/${encodeURIComponent(clean)}/64`,
+    avatarUrl: minecraftHeadUrl(clean),
     addedAt: new Date().toISOString(),
   }
 
@@ -115,7 +115,7 @@ export function addMicrosoftAccount(
     type: "microsoft",
     username: profile.username,
     uuid: profile.uuid,
-    avatarUrl: `https://mc-heads.net/avatar/${encodeURIComponent(profile.username)}/64`,
+    avatarUrl: minecraftHeadUrl(profile.username),
     addedAt: new Date().toISOString(),
   }
   return saveSecret(account.id, tokens).then(() => {
@@ -142,4 +142,8 @@ export function setActiveAccount(state: AccountsState, id: string): AccountsStat
 
 export function getActiveAccount(state: AccountsState): Account | null {
   return state.accounts.find((a) => a.id === state.activeId) ?? null
+}
+
+function minecraftHeadUrl(username: string): string {
+  return `https://minotar.net/helm/${encodeURIComponent(username)}/64.png`
 }

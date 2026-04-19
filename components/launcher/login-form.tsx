@@ -87,9 +87,22 @@ export function LoginForm() {
           <Button
             type="button"
             variant="outline"
-            onClick={() =>
-              setError("Login Microsoft sera implementado depois do fluxo offline local.")
-            }
+            onClick={() => {
+              const login = window.aetherion?.accounts?.addMicrosoft?.()
+              if (!login) {
+                setError("Login Microsoft sera implementado no processo Electron.")
+                return
+              }
+              login
+                .then(() => router.push("/launcher"))
+                .catch((e) =>
+                  setError(
+                    e instanceof Error
+                      ? e.message
+                      : "Login Microsoft ainda nao esta disponivel neste build.",
+                  ),
+                )
+            }}
             className="mt-8 w-full h-11 justify-center gap-3 border-border/70 bg-card hover:bg-muted"
           >
             <MicrosoftLogo />

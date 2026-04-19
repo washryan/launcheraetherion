@@ -6,7 +6,7 @@
   "instanceId": "aetherion-main",
   "publishedAt": "2026-04-19T00:00:00.000Z",
   "changelog": "- Launcher Electron inicia Minecraft/Forge 1.19.2\n- Forge, libraries, assets e mods sao preparados automaticamente\n- JEI e OptiFine ficam como opcionais selecionaveis\n- Configuracoes de Java, Minecraft, armazenamento, logs, cache e integridade persistentes",
-  "requiredLauncherVersion": "0.1.0",
+  "requiredLauncherVersion": "0.2.0",
   "forge": {
     "version": "43.5.0",
     "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.3/forge-1.19.2-43.5.0-installer.jar",
