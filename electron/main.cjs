@@ -39,6 +39,7 @@ const DEFAULT_MANIFEST = {
 
 let mainWindow = null
 let activeLaunchAbort = null
+let activeMinecraftProcess = null
 
 app.setName("Aetherion Launcher")
 
@@ -170,6 +171,9 @@ ipcMain.handle("launch:start", async (_event, args) => {
 
 ipcMain.handle("launch:cancel", () => {
   activeLaunchAbort?.abort()
+  if (activeMinecraftProcess && !activeMinecraftProcess.killed) {
+    activeMinecraftProcess.kill()
+  }
   return { ok: true }
 })
 
@@ -314,10 +318,11 @@ async function runUpdater(args, signal) {
       `Ainda faltam ${finalLaunchPlan.missing.length} arquivo(s) para iniciar. Primeiro: ${finalLaunchPlan.missing[0]}`,
     )
   }
+  const processInfo = await startMinecraft(finalLaunchPlan, signal)
 
   emitLaunchProgress({
     phase: "running",
-    message: "Runtime Minecraft/Forge pronto. Spawn do jogo entra na proxima fase.",
+    message: `Minecraft iniciado (PID ${processInfo.pid}).`,
     totalBytes: plan.totalBytes,
     loadedBytes: plan.totalBytes,
     filesDone: plan.downloadCount,
@@ -328,6 +333,7 @@ async function runUpdater(args, signal) {
     minecraft: manifest.minecraft,
     forge: manifest.forge.version,
     launchPlan: summarizeLaunchPlan(finalLaunchPlan),
+    process: processInfo,
   }
 }
 
@@ -372,6 +378,8 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
     game_directory: root,
     assets_root: assetsRoot,
     assets_index_name: parentProfile.assetIndex?.id || parentId,
+    resolution_width: args?.width || 1280,
+    resolution_height: args?.height || 720,
     auth_uuid: account.uuid.replace(/-/g, ""),
     auth_access_token: "0",
     clientid: "",
@@ -390,7 +398,10 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
     ...memoryArgs,
     ...resolveArguments(merged.arguments.jvm, variables),
   ].filter(Boolean)
-  const gameArgs = resolveArguments(merged.arguments.game, variables)
+  const gameArgs = resolveArguments(merged.arguments.game, variables, {
+    has_custom_resolution: true,
+  })
+  if (args?.fullscreen) gameArgs.push("--fullscreen")
   const commandArgs = [...jvmArgs, merged.mainClass, ...gameArgs]
   const assetIndexPath = path.join(assetsRoot, "indexes", `${variables.assets_index_name}.json`)
   const missing = [
@@ -459,6 +470,101 @@ function summarizeLaunchPlan(plan) {
     missing: plan.missing.slice(0, 20),
     missingCount: plan.missing.length,
   }
+}
+
+async function startMinecraft(launchPlan, signal) {
+  throwIfAborted(signal)
+  if (activeMinecraftProcess && !activeMinecraftProcess.killed) {
+    throw new Error("Minecraft ja esta em execucao.")
+  }
+
+  await fs.mkdir(path.join(launchPlan.root, "logs"), { recursive: true })
+  const logPath = path.join(launchPlan.root, "logs", "aetherion-latest.log")
+  const logStream = fsSync.createWriteStream(logPath, { flags: "w" })
+
+  emitLaunchProgress({
+    phase: "launching",
+    message: "Abrindo Minecraft...",
+  })
+
+  console.log("[aetherion] starting minecraft", {
+    javaPath: launchPlan.javaPath,
+    cwd: launchPlan.root,
+    args: launchPlan.commandArgs.length,
+    logPath,
+  })
+
+  const child = spawn(launchPlan.javaPath, launchPlan.commandArgs, {
+    cwd: launchPlan.root,
+    windowsHide: false,
+    shell: false,
+    env: {
+      ...process.env,
+      AETHERION_INSTANCE_DIR: launchPlan.root,
+    },
+  })
+  activeMinecraftProcess = child
+
+  const writeLog = (chunk) => {
+    const text = chunk.toString()
+    logStream.write(text)
+    const lastLine = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .pop()
+    if (lastLine) console.log("[minecraft]", lastLine)
+  }
+
+  child.stdout.on("data", writeLog)
+  child.stderr.on("data", writeLog)
+
+  const abort = () => {
+    if (!child.killed) child.kill()
+  }
+  signal?.addEventListener("abort", abort, { once: true })
+
+  const processInfo = await new Promise((resolve, reject) => {
+    let settled = false
+    const settle = (fn, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(startedTimer)
+      signal?.removeEventListener("abort", abort)
+      fn(value)
+    }
+    const startedTimer = setTimeout(() => {
+      settle(resolve, { pid: child.pid, logPath })
+    }, 3500)
+
+    child.on("error", (error) => {
+      settle(reject, error)
+    })
+    child.on("close", (code) => {
+      logStream.end()
+      if (activeMinecraftProcess === child) activeMinecraftProcess = null
+
+      if (!settled) {
+        settle(
+          code === 0 ? resolve : reject,
+          code === 0
+            ? { pid: child.pid, logPath, exitCode: code }
+            : new Error(`Minecraft fechou cedo com codigo ${code}. Log: ${logPath}`),
+        )
+        return
+      }
+
+      if (code !== 0) {
+        emitLaunchProgress({
+          phase: "error",
+          message: "Minecraft fechou com erro.",
+          error: `Codigo ${code}. Log: ${logPath}`,
+        })
+      }
+    })
+  })
+
+  return processInfo
 }
 
 async function prepareMinecraftRuntime(root, launchPlan, signal) {
@@ -811,7 +917,7 @@ function uniqueArtifacts(artifacts) {
   return [...byPath.values()]
 }
 
-function resolveArguments(args, variables) {
+function resolveArguments(args, variables, features = {}) {
   const resolved = []
 
   for (const arg of args || []) {
@@ -821,7 +927,7 @@ function resolveArguments(args, variables) {
     }
 
     if (!arg || typeof arg !== "object") continue
-    if (!isAllowedByRules(arg.rules)) continue
+    if (!isAllowedByRules(arg.rules, { features })) continue
 
     for (const value of flattenArgumentValue(arg.value)) {
       resolved.push(applyVariables(value, variables))
@@ -868,7 +974,11 @@ function ruleMatches(rule, options) {
     if (rule.os.arch && rule.os.arch !== process.arch) return false
   }
 
-  if (rule.features && !options.hasFeatures) return false
+  if (rule.features) {
+    for (const [feature, expected] of Object.entries(rule.features)) {
+      if (Boolean(options.features?.[feature]) !== Boolean(expected)) return false
+    }
+  }
   return true
 }
 
