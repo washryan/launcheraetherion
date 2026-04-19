@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron")
+const { app, BrowserWindow, dialog, ipcMain, protocol, shell } = require("electron")
 const { spawn } = require("node:child_process")
 const crypto = require("node:crypto")
 const fsSync = require("node:fs")
@@ -14,6 +14,7 @@ const LAUNCHER_VERSION = "0.1.0"
 const MOJANG_VERSION_MANIFEST =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 const MINECRAFT_RESOURCES_BASE = "https://resources.download.minecraft.net"
+const APP_PROTOCOL = "aetherion"
 const LAUNCH_TARGET = {
   minecraft: "1.19.2",
   forge: "43.5.0",
@@ -67,6 +68,18 @@ let activeMinecraftProcess = null
 let activeMinecraftDetached = true
 
 app.setName("Aetherion Launcher")
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: APP_PROTOCOL,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+])
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -77,6 +90,7 @@ function createWindow() {
     frame: false,
     titleBarStyle: "hidden",
     backgroundColor: "#0a0905",
+    icon: appIconPath(),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -94,7 +108,7 @@ function createWindow() {
       mainWindow.webContents.openDevTools({ mode: "detach" })
     }
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../out/launcher/index.html"))
+    mainWindow.loadURL(`${APP_PROTOCOL}://app/launcher/`)
   }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -103,7 +117,74 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(createWindow)
+function registerStaticAppProtocol() {
+  protocol.handle(APP_PROTOCOL, async (request) => {
+    const outRoot = path.join(app.getAppPath(), "out")
+    const url = new URL(request.url)
+    let pathname = decodeURIComponent(url.pathname)
+
+    if (!pathname || pathname === "/") pathname = "/launcher/"
+    if (pathname.endsWith("/")) pathname = `${pathname}index.html`
+
+    const filePath = safeStaticPath(outRoot, pathname)
+    if (!filePath || !fsSync.existsSync(filePath)) {
+      return new Response("Arquivo nao encontrado.", { status: 404 })
+    }
+
+    const data = await fs.readFile(filePath)
+    return new Response(data, {
+      headers: { "content-type": contentTypeFor(filePath) },
+    })
+  })
+}
+
+function contentTypeFor(filePath) {
+  switch (path.extname(filePath).toLowerCase()) {
+    case ".html":
+      return "text/html; charset=utf-8"
+    case ".js":
+      return "text/javascript; charset=utf-8"
+    case ".css":
+      return "text/css; charset=utf-8"
+    case ".json":
+      return "application/json; charset=utf-8"
+    case ".svg":
+      return "image/svg+xml"
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg"
+    case ".png":
+      return "image/png"
+    case ".ico":
+      return "image/x-icon"
+    case ".woff2":
+      return "font/woff2"
+    default:
+      return "application/octet-stream"
+  }
+}
+
+function safeStaticPath(root, requestPath) {
+  const relativePath = toPosix(requestPath).replace(/^\/+/, "")
+  const resolved = path.resolve(root, ...relativePath.split("/"))
+  const normalizedRoot = path.resolve(root)
+
+  if (resolved !== normalizedRoot && !resolved.startsWith(`${normalizedRoot}${path.sep}`)) {
+    return null
+  }
+
+  return resolved
+}
+
+function appIconPath() {
+  const iconPath = path.join(app.getAppPath(), "build", "icon.ico")
+  return fsSync.existsSync(iconPath) ? iconPath : undefined
+}
+
+app.whenReady().then(async () => {
+  if (!isDev) registerStaticAppProtocol()
+  createWindow()
+})
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit()

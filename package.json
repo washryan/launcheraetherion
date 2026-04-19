@@ -22,16 +22,19 @@
   "build": {
     "appId": "gg.aetherion.launcher",
     "productName": "Aetherion Launcher",
+    "icon": "build/icon.ico",
     "directories": {
       "output": "dist"
     },
     "files": [
       "electron/**/*",
       "out/**/*",
+      "build/icon.ico",
       "package.json"
     ],
     "asar": true,
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",

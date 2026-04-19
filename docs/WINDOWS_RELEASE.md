@@ -1,0 +1,68 @@
+# Publicar o launcher Windows
+
+Este fluxo faz o botao de download do site parar de cair em 404.
+
+## Por que acontece 404?
+
+O site aponta para este padrao:
+
+```txt
+https://github.com/washryan/launcheraetherion/releases/download/v0.1.0/Aetherion%20Launcher%20Setup%200.1.0.exe
+```
+
+Esse link so existe quando:
+
+1. Existe um GitHub Release com a tag `v0.1.0`.
+2. Esse release tem um asset chamado exatamente `Aetherion Launcher Setup 0.1.0.exe`.
+
+Enquanto o asset nao for enviado para o release, o GitHub responde 404.
+
+## Passo a passo
+
+1. Gere o instalador local:
+
+```powershell
+pnpm build:win
+```
+
+2. Confirme que o arquivo existe:
+
+```powershell
+Get-Item ".\dist\Aetherion Launcher Setup 0.1.0.exe"
+```
+
+3. Crie um token no GitHub:
+
+- Acesse GitHub > Settings > Developer settings > Personal access tokens.
+- Use um token com permissao `Contents: Read and write` no repo `washryan/launcheraetherion`.
+- Copie o token.
+
+4. No PowerShell, defina o token apenas para a sessao atual:
+
+```powershell
+$env:GITHUB_TOKEN="COLE_SEU_TOKEN_AQUI"
+```
+
+5. Publique o instalador:
+
+```powershell
+pnpm release:win
+```
+
+6. Teste o link:
+
+```txt
+https://github.com/washryan/launcheraetherion/releases/download/v0.1.0/Aetherion%20Launcher%20Setup%200.1.0.exe
+```
+
+Se o download iniciar, o site `/download` tambem vai funcionar.
+
+## Importante para outros jogadores
+
+O instalador baixa e abre o launcher. Para o Minecraft baixar o modpack em outro PC, o release `v0.3` tambem precisa ter os assets do modpack:
+
+- `forge-1.19.2-43.5.0-installer.jar`
+- todos os mods obrigatorios
+- mods opcionais, incluindo JEI e OptiFine
+
+O comando `pnpm manifest:publish` mostra a lista exata de arquivos que precisam estar no release `v0.3`.
