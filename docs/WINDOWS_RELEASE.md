@@ -114,3 +114,37 @@ O instalador baixa e abre o launcher. Para o Minecraft baixar o modpack em outro
 - mods opcionais, incluindo JEI e OptiFine
 
 O comando `pnpm manifest:publish` mostra a lista exata de arquivos que precisam estar no release `v0.3`.
+
+## Publicar o modpack v0.3
+
+A pasta `pack-v0.3` nao fica no reposititorio porque ela contem os `.jar` do modpack. O GitHub Actions tambem nao consegue publicar esses arquivos sozinho, porque eles so existem na sua maquina.
+
+O launcher baixa os mods assim:
+
+1. Ele le `public/manifest.json`.
+2. Cada arquivo do manifest tem uma URL de GitHub Release, por exemplo:
+
+```txt
+https://github.com/washryan/launcheraetherion/releases/download/v0.3/aether-1.19.2-1.4.2-forge.jar
+```
+
+3. O launcher baixa o asset do release `v0.3`.
+4. O launcher confere SHA-256.
+5. O launcher copia para `mods/` da instancia.
+
+Para publicar os assets do modpack:
+
+```powershell
+$env:GITHUB_TOKEN="COLE_SEU_TOKEN_AQUI"
+pnpm release:modpack
+```
+
+Esse comando:
+
+- regenera `public/manifest.json`;
+- cria ou reutiliza o release `v0.3`;
+- envia `forge-1.19.2-43.5.0-installer.jar`;
+- envia todos os mods obrigatorios;
+- envia JEI e OptiFine como opcionais.
+
+Sem esse release `v0.3`, o launcher funciona no seu PC em modo dev porque acha os arquivos locais em `pack-v0.3`, mas outros jogadores receberao erro ao tentar baixar os mods.
