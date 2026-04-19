@@ -25,6 +25,7 @@
     "appId": "gg.aetherion.launcher",
     "productName": "Aetherion Launcher",
     "icon": "build/icon.ico",
+    "artifactName": "Aetherion.Launcher.Setup.${version}.${ext}",
     "directories": {
       "output": "dist"
     },

@@ -14,7 +14,7 @@ import { MOCK_MANIFEST } from "@/lib/launcher/mock-data"
 import { launcherDownloadUrl, releasePageUrl } from "@/lib/launcher/github-releases"
 
 const LAUNCHER_VERSION = "0.1.0"
-const WINDOWS_INSTALLER_FILENAME = `Aetherion Launcher Setup ${LAUNCHER_VERSION}.exe`
+const WINDOWS_INSTALLER_FILENAME = `Aetherion.Launcher.Setup.${LAUNCHER_VERSION}.exe`
 const LAUNCHER_REPO = {
   owner: "washryan",
   repo: "launcheraetherion",

@@ -14,7 +14,7 @@ if (-not $env:GITHUB_TOKEN) {
 
 $tag = "v$Version"
 if (-not $InstallerPath) {
-  $InstallerPath = Join-Path (Get-Location) "dist\Aetherion Launcher Setup $Version.exe"
+  $InstallerPath = Join-Path (Get-Location) "dist\Aetherion.Launcher.Setup.$Version.exe"
 }
 
 if (-not (Test-Path $InstallerPath)) {
