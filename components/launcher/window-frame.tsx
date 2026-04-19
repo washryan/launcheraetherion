@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import type React from "react"
 import { Minus, Square, X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -21,25 +22,38 @@ export function WindowFrame({
   children: React.ReactNode
   className?: string
 }) {
+  const [isElectron, setIsElectron] = useState(false)
+
+  useEffect(() => {
+    setIsElectron(Boolean(window.aetherion))
+  }, [])
+
   const minimize = () => window.aetherion?.window.minimize()
   const maximize = () => window.aetherion?.window.maximize()
   const close = () => window.aetherion?.window.close()
 
   return (
-    <div className="min-h-dvh w-full flex items-center justify-center p-6 bg-background">
+    <div
+      className={cn(
+        "w-full bg-background overflow-hidden",
+        isElectron
+          ? "h-screen p-0"
+          : "min-h-dvh flex items-center justify-center p-6",
+      )}
+    >
       <div
         className={cn(
-          "w-full max-w-[1200px] h-[760px] rounded-xl overflow-hidden",
-          "bg-card border border-border/60",
-          "shadow-[0_40px_80px_-20px_rgba(0,0,0,0.6)]",
-          "flex flex-col",
+          "w-full overflow-hidden bg-card flex flex-col",
+          isElectron
+            ? "h-full rounded-none border-0 shadow-none"
+            : "max-w-[1200px] h-[760px] rounded-xl border border-border/60 shadow-[0_40px_80px_-20px_rgba(0,0,0,0.6)]",
           className,
         )}
       >
         {/* Title bar */}
         <header
           className="h-10 shrink-0 flex items-center justify-between px-4 bg-background/40 border-b border-border/50 select-none"
-          // Na Fase 5: adicionar -webkit-app-region: drag no Electron
+          style={isElectron ? ({ WebkitAppRegion: "drag" } as React.CSSProperties) : undefined}
         >
           <div className="flex items-center gap-2">
             <div className="size-4 rounded-sm bg-primary/90 aetherion-gold-glow" aria-hidden />
@@ -75,6 +89,7 @@ function WindowButton({
   return (
     <button
       type="button"
+      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       className={cn(
         "size-7 rounded-md inline-flex items-center justify-center text-muted-foreground transition",
         "hover:bg-muted hover:text-foreground",

@@ -13,9 +13,9 @@ app.setName("Aetherion Launcher")
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
-    height: 740,
-    minWidth: 1000,
-    minHeight: 650,
+    height: 760,
+    minWidth: 1100,
+    minHeight: 700,
     frame: false,
     titleBarStyle: "hidden",
     backgroundColor: "#0a0905",
@@ -32,7 +32,9 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL("http://localhost:3000/launcher")
-    mainWindow.webContents.openDevTools({ mode: "detach" })
+    if (process.env.AETHERION_OPEN_DEVTOOLS === "1") {
+      mainWindow.webContents.openDevTools({ mode: "detach" })
+    }
   } else {
     mainWindow.loadFile(path.join(__dirname, "../out/launcher/index.html"))
   }
