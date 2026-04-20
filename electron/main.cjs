@@ -10,12 +10,13 @@ const path = require("node:path")
 const isDev = !app.isPackaged
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,16}$/
 const LAUNCHER_NAME = "AetherionLauncher"
-const LAUNCHER_VERSION = "0.2.1"
+const LAUNCHER_VERSION = "0.2.2"
 const MOJANG_VERSION_MANIFEST =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 const MINECRAFT_RESOURCES_BASE = "https://resources.download.minecraft.net"
 const DEFAULT_REMOTE_MANIFEST_URL =
   "https://raw.githubusercontent.com/washryan/launcheraetherion/main/public/manifest.json"
+const MINECRAFT_START_GRACE_MS = 45000
 const APP_PROTOCOL = "aetherion"
 const LAUNCH_TARGET = {
   minecraft: "1.19.2",
@@ -23,7 +24,7 @@ const LAUNCH_TARGET = {
 }
 const FORGE_INSTALLER_FILENAME = `forge-${LAUNCH_TARGET.minecraft}-${LAUNCH_TARGET.forge}-installer.jar`
 const DEFAULT_MANIFEST = {
-  version: "0.2.1-dev",
+  version: "0.2.2-dev",
   minecraft: LAUNCH_TARGET.minecraft,
   name: "Aetherion Main",
   instanceId: "aetherion-main",
@@ -1006,7 +1007,7 @@ async function startMinecraft(launchPlan, signal) {
   const child = spawn(launchPlan.javaPath, launchPlan.commandArgs, {
     cwd: launchPlan.root,
     detached: launchPlan.detachProcess,
-    windowsHide: false,
+    windowsHide: true,
     shell: false,
     env: {
       ...process.env,
@@ -1047,21 +1048,22 @@ async function startMinecraft(launchPlan, signal) {
     const startedTimer = setTimeout(() => {
       if (launchPlan.detachProcess) child.unref()
       settle(resolve, { pid: child.pid, logPath })
-    }, 15000)
+    }, MINECRAFT_START_GRACE_MS)
 
     child.on("error", (error) => {
       settle(reject, error)
     })
-    child.on("close", (code) => {
+    child.on("close", async (code) => {
       logStream.end()
       if (activeMinecraftProcess === child) activeMinecraftProcess = null
+      const diagnostics = await minecraftExitDiagnostics(launchPlan.root, logPath, code)
 
       if (!settled) {
         settle(
           code === 0 ? resolve : reject,
           code === 0
             ? { pid: child.pid, logPath, exitCode: code }
-            : new Error(`Minecraft fechou cedo com codigo ${code}. Log: ${logPath}`),
+            : new Error(diagnostics.message),
         )
         return
       }
@@ -1070,13 +1072,62 @@ async function startMinecraft(launchPlan, signal) {
         emitLaunchProgress({
           phase: "error",
           message: "Minecraft fechou com erro.",
-          error: `Codigo ${code}. Log: ${logPath}`,
+          error: diagnostics.message,
         })
       }
     })
   })
 
   return processInfo
+}
+
+async function minecraftExitDiagnostics(root, logPath, code) {
+  const crashReport = await newestCrashReport(root)
+  const logTail = await readTail(logPath, 18)
+  const hints = []
+
+  if (/java version 2[1-9]\./i.test(logTail)) {
+    hints.push(
+      "Java 21 detectado. Para Minecraft 1.19.2/Forge, use Java 17 em Configuracoes > Java.",
+    )
+  }
+  if (/OptiFineTransformationService|OptiFineTransformer/i.test(logTail)) {
+    hints.push("OptiFine estava ativo. Para testar estabilidade, desative OptiFine em Mods opcionais.")
+  }
+  if (/HTTP\s+404|Not Found em https?:\/\//i.test(logTail)) {
+    hints.push("Foi detectado 404 no log; rode Verificar integridade para baixar novamente.")
+  }
+
+  const parts = [`Minecraft fechou cedo com codigo ${code}.`]
+  if (crashReport) parts.push(`Crash report: ${crashReport}`)
+  parts.push(`Log: ${logPath}`)
+  if (hints.length) parts.push(`Possivel causa: ${hints.join(" ")}`)
+  if (logTail) parts.push(`Ultimas linhas:\n${logTail}`)
+
+  return { message: parts.join("\n\n"), crashReport, logPath, logTail }
+}
+
+async function newestCrashReport(root) {
+  const crashDir = path.join(root, "crash-reports")
+  const entries = await fs.readdir(crashDir, { withFileTypes: true }).catch(() => [])
+  const reports = []
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".txt")) continue
+    const fullPath = path.join(crashDir, entry.name)
+    const info = await fs.stat(fullPath).catch(() => null)
+    if (info) reports.push({ path: fullPath, mtimeMs: info.mtimeMs })
+  }
+  return reports.sort((a, b) => b.mtimeMs - a.mtimeMs)[0]?.path || null
+}
+
+async function readTail(filePath, maxLines) {
+  const text = await fs.readFile(filePath, "utf8").catch(() => "")
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .slice(-maxLines)
+    .join("\n")
 }
 
 async function prepareMinecraftRuntime(root, launchPlan, signal) {
