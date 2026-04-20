@@ -11,7 +11,7 @@ const zlib = require("node:zlib")
 const isDev = !app.isPackaged
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,16}$/
 const LAUNCHER_NAME = "AetherionLauncher"
-const LAUNCHER_VERSION = "0.2.3"
+const LAUNCHER_VERSION = "0.2.4"
 const MOJANG_VERSION_MANIFEST =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 const MINECRAFT_RESOURCES_BASE = "https://resources.download.minecraft.net"
@@ -25,7 +25,7 @@ const LAUNCH_TARGET = {
 }
 const FORGE_INSTALLER_FILENAME = `forge-${LAUNCH_TARGET.minecraft}-${LAUNCH_TARGET.forge}-installer.jar`
 const DEFAULT_MANIFEST = {
-  version: "0.2.3-dev",
+  version: "0.2.4-dev",
   minecraft: LAUNCH_TARGET.minecraft,
   name: "Aetherion Main",
   instanceId: "aetherion-main",
@@ -43,6 +43,7 @@ const DEFAULT_MANIFEST = {
   protectedPatterns: ["mods/*-SERVER.jar", "config/custom-*.toml"],
 }
 const AETHERION_SERVER_HOST = "left-fcc.gl.joinmc.link"
+const AETHERION_SERVER_NAME = "Aetherion"
 const DEFAULT_SETTINGS = {
   minecraft: {
     resolution: { width: 1280, height: 720 },
@@ -905,6 +906,7 @@ async function buildMinecraftLaunchPlan(root, manifest, args, signal) {
   })
   if (args?.fullscreen) gameArgs.push("--fullscreen")
   if (args?.autoConnectServer) gameArgs.push("--server", AETHERION_SERVER_HOST)
+  await ensureMinecraftServerList(root)
   const commandArgs = [...jvmArgs, merged.mainClass, ...gameArgs]
   const assetIndexPath = path.join(assetsRoot, "indexes", `${variables.assets_index_name}.json`)
   const missing = [
@@ -1129,6 +1131,281 @@ async function readTail(filePath, maxLines) {
     .filter(Boolean)
     .slice(-maxLines)
     .join("\n")
+}
+
+async function ensureMinecraftServerList(root) {
+  const serversPath = path.join(root, "servers.dat")
+  let rootTag = null
+  let compressed = true
+
+  try {
+    const file = await fs.readFile(serversPath)
+    const decoded = decodeMaybeCompressedNbt(file)
+    rootTag = decoded.root
+    compressed = decoded.compressed
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      console.warn("[aetherion] failed to read servers.dat, recreating", error)
+    }
+  }
+
+  if (!rootTag || rootTag.type !== 10 || !rootTag.value || typeof rootTag.value !== "object") {
+    rootTag = {
+      type: 10,
+      name: "",
+      value: {
+        servers: { type: 9, value: { itemType: 10, value: [] } },
+      },
+    }
+  }
+
+  const servers = rootTag.value.servers
+  if (
+    !servers ||
+    servers.type !== 9 ||
+    servers.value?.itemType !== 10 ||
+    !Array.isArray(servers.value?.value)
+  ) {
+    rootTag.value.servers = { type: 9, value: { itemType: 10, value: [] } }
+  }
+
+  const list = rootTag.value.servers.value.value
+  const hasAetherion = list.some((server) => {
+    const ip = String(server?.ip?.value || "").toLowerCase()
+    return ip === AETHERION_SERVER_HOST.toLowerCase()
+  })
+  if (hasAetherion) return
+
+  list.unshift({
+    name: { type: 8, value: AETHERION_SERVER_NAME },
+    ip: { type: 8, value: AETHERION_SERVER_HOST },
+    acceptTextures: { type: 1, value: 1 },
+  })
+
+  await fs.writeFile(serversPath, encodeMaybeCompressedNbt(rootTag, compressed))
+}
+
+function decodeMaybeCompressedNbt(buffer) {
+  const compressed = buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b
+  const payload = compressed ? zlib.gunzipSync(buffer) : buffer
+  return { root: readNbtRoot(payload), compressed }
+}
+
+function encodeMaybeCompressedNbt(rootTag, compressed) {
+  const payload = writeNbtRoot(rootTag)
+  return compressed ? zlib.gzipSync(payload) : payload
+}
+
+function readNbtRoot(buffer) {
+  const cursor = { offset: 0 }
+  const type = readUInt8(buffer, cursor)
+  const name = readNbtString(buffer, cursor)
+  return { type, name, value: readNbtPayload(buffer, cursor, type) }
+}
+
+function readNbtPayload(buffer, cursor, type) {
+  switch (type) {
+    case 0:
+      return null
+    case 1:
+      return readInt8(buffer, cursor)
+    case 2:
+      return readInt16(buffer, cursor)
+    case 3:
+      return readInt32(buffer, cursor)
+    case 4:
+      return readBigInt64(buffer, cursor)
+    case 5:
+      return readFloat(buffer, cursor)
+    case 6:
+      return readDouble(buffer, cursor)
+    case 7: {
+      const length = readInt32(buffer, cursor)
+      const value = buffer.subarray(cursor.offset, cursor.offset + length)
+      cursor.offset += length
+      return Buffer.from(value)
+    }
+    case 8:
+      return readNbtString(buffer, cursor)
+    case 9: {
+      const itemType = readUInt8(buffer, cursor)
+      const length = readInt32(buffer, cursor)
+      const value = []
+      for (let index = 0; index < length; index++) {
+        value.push(readNbtPayload(buffer, cursor, itemType))
+      }
+      return { itemType, value }
+    }
+    case 10: {
+      const value = {}
+      while (true) {
+        const childType = readUInt8(buffer, cursor)
+        if (childType === 0) break
+        const name = readNbtString(buffer, cursor)
+        value[name] = { type: childType, value: readNbtPayload(buffer, cursor, childType) }
+      }
+      return value
+    }
+    case 11: {
+      const length = readInt32(buffer, cursor)
+      const value = []
+      for (let index = 0; index < length; index++) value.push(readInt32(buffer, cursor))
+      return value
+    }
+    case 12: {
+      const length = readInt32(buffer, cursor)
+      const value = []
+      for (let index = 0; index < length; index++) value.push(readBigInt64(buffer, cursor))
+      return value
+    }
+    default:
+      throw new Error(`NBT tag nao suportada: ${type}`)
+  }
+}
+
+function writeNbtRoot(rootTag) {
+  const chunks = [Buffer.from([rootTag.type]), writeNbtString(rootTag.name || "")]
+  chunks.push(writeNbtPayload(rootTag.type, rootTag.value))
+  return Buffer.concat(chunks)
+}
+
+function writeNbtPayload(type, value) {
+  switch (type) {
+    case 0:
+      return Buffer.alloc(0)
+    case 1:
+      return writeInt8(value)
+    case 2:
+      return writeInt16(value)
+    case 3:
+      return writeInt32(value)
+    case 4:
+      return writeBigInt64(value)
+    case 5:
+      return writeFloat(value)
+    case 6:
+      return writeDouble(value)
+    case 7:
+      return Buffer.concat([writeInt32(value?.length || 0), Buffer.from(value || [])])
+    case 8:
+      return writeNbtString(value || "")
+    case 9: {
+      const itemType = value?.itemType ?? 10
+      const items = Array.isArray(value?.value) ? value.value : []
+      return Buffer.concat([
+        Buffer.from([itemType]),
+        writeInt32(items.length),
+        ...items.map((item) => writeNbtPayload(itemType, item)),
+      ])
+    }
+    case 10: {
+      const chunks = []
+      for (const [name, child] of Object.entries(value || {})) {
+        chunks.push(Buffer.from([child.type]), writeNbtString(name), writeNbtPayload(child.type, child.value))
+      }
+      chunks.push(Buffer.from([0]))
+      return Buffer.concat(chunks)
+    }
+    case 11:
+      return Buffer.concat([writeInt32(value?.length || 0), ...(value || []).map(writeInt32)])
+    case 12:
+      return Buffer.concat([writeInt32(value?.length || 0), ...(value || []).map(writeBigInt64)])
+    default:
+      throw new Error(`NBT tag nao suportada: ${type}`)
+  }
+}
+
+function readUInt8(buffer, cursor) {
+  return buffer.readUInt8(cursor.offset++)
+}
+
+function readInt8(buffer, cursor) {
+  return buffer.readInt8(cursor.offset++)
+}
+
+function readInt16(buffer, cursor) {
+  const value = buffer.readInt16BE(cursor.offset)
+  cursor.offset += 2
+  return value
+}
+
+function readInt32(buffer, cursor) {
+  const value = buffer.readInt32BE(cursor.offset)
+  cursor.offset += 4
+  return value
+}
+
+function readBigInt64(buffer, cursor) {
+  const value = buffer.readBigInt64BE(cursor.offset)
+  cursor.offset += 8
+  return value
+}
+
+function readFloat(buffer, cursor) {
+  const value = buffer.readFloatBE(cursor.offset)
+  cursor.offset += 4
+  return value
+}
+
+function readDouble(buffer, cursor) {
+  const value = buffer.readDoubleBE(cursor.offset)
+  cursor.offset += 8
+  return value
+}
+
+function readNbtString(buffer, cursor) {
+  const length = buffer.readUInt16BE(cursor.offset)
+  cursor.offset += 2
+  const value = buffer.subarray(cursor.offset, cursor.offset + length).toString("utf8")
+  cursor.offset += length
+  return value
+}
+
+function writeInt8(value) {
+  const buffer = Buffer.alloc(1)
+  buffer.writeInt8(Number(value || 0))
+  return buffer
+}
+
+function writeInt16(value) {
+  const buffer = Buffer.alloc(2)
+  buffer.writeInt16BE(Number(value || 0))
+  return buffer
+}
+
+function writeInt32(value) {
+  const buffer = Buffer.alloc(4)
+  buffer.writeInt32BE(Number(value || 0))
+  return buffer
+}
+
+function writeBigInt64(value) {
+  const buffer = Buffer.alloc(8)
+  buffer.writeBigInt64BE(BigInt(value || 0))
+  return buffer
+}
+
+function writeFloat(value) {
+  const buffer = Buffer.alloc(4)
+  buffer.writeFloatBE(Number(value || 0))
+  return buffer
+}
+
+function writeDouble(value) {
+  const buffer = Buffer.alloc(8)
+  buffer.writeDoubleBE(Number(value || 0))
+  return buffer
+}
+
+function writeNbtString(value) {
+  const text = Buffer.from(String(value || ""), "utf8")
+  return Buffer.concat([writeUInt16(text.length), text])
+}
+
+function writeUInt16(value) {
+  const buffer = Buffer.alloc(2)
+  buffer.writeUInt16BE(Number(value || 0))
+  return buffer
 }
 
 async function prepareMinecraftRuntime(root, launchPlan, signal) {
@@ -2178,14 +2455,37 @@ function javaExecutableName() {
 
 async function inspectJava(candidate) {
   try {
-    const output = await captureProcess(candidate, ["-version"], { timeoutMs: 8000 })
+    const probePath = javaProbePath(candidate)
+    const output = await captureProcess(probePath, ["-version"], { timeoutMs: 8000 })
     const text = `${output.stdout}\n${output.stderr}`
     const major = parseJavaMajor(text)
     if (!major) return null
-    return { path: candidate, major, version: firstLine(text) || `Java ${major}` }
+    return {
+      path: javaLaunchPath(candidate),
+      probePath,
+      major,
+      version: firstLine(text) || `Java ${major}`,
+    }
   } catch {
     return null
   }
+}
+
+function javaProbePath(candidate) {
+  if (process.platform !== "win32") return candidate
+  const parsed = path.parse(String(candidate))
+  if (parsed.base.toLowerCase() !== "javaw.exe") return candidate
+  const sibling = path.join(parsed.dir, "java.exe")
+  return fsSync.existsSync(sibling) ? sibling : candidate
+}
+
+function javaLaunchPath(candidate) {
+  if (process.platform !== "win32") return candidate
+  const parsed = path.parse(String(candidate))
+  if (parsed.base.toLowerCase() === "javaw.exe") return candidate
+  if (parsed.base.toLowerCase() !== "java.exe") return candidate
+  const sibling = path.join(parsed.dir, "javaw.exe")
+  return fsSync.existsSync(sibling) ? sibling : candidate
 }
 
 function parseJavaMajor(text) {

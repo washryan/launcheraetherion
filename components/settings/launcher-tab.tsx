@@ -68,24 +68,9 @@ export function LauncherTab() {
   return (
     <>
       <SettingsSection
-        title="Manifest do modpack"
-        description="URL publica que o launcher usa para baixar Forge, mods, configs e atualizacoes."
+        title="Launcher"
+        description="Comportamento da janela e informacoes locais."
       >
-        <SettingsRow
-          label="URL do manifest"
-          description="Deixe vazio para usar o manifest local de desenvolvimento."
-        >
-          <Input
-            value={prefs.manifestUrl ?? ""}
-            onChange={(event) =>
-              updatePrefs((p) => ({ ...p, manifestUrl: event.target.value }))
-            }
-            placeholder="https://seu-site.vercel.app/manifest.json"
-            className="w-[360px] h-9 bg-input/40 font-mono text-xs"
-          />
-        </SettingsRow>
-        <p className="text-[11px] text-muted-foreground">{status}</p>
-
         <SettingsRow
           label="Minimizar para a bandeja"
           description="Ao fechar, o launcher continua rodando em segundo plano."
@@ -105,6 +90,7 @@ export function LauncherTab() {
             onCheckedChange={(v) => updatePrefs((p) => ({ ...p, telemetry: v }))}
           />
         </SettingsRow>
+        <p className="text-[11px] text-muted-foreground">{status}</p>
       </SettingsSection>
 
       <SettingsSection
@@ -168,8 +154,8 @@ export function LauncherTab() {
 
       <SettingsSection title="Sobre">
         <div className="rounded-lg border border-border/50 bg-card/40 p-5 space-y-3">
-          <InfoLine label="Launcher" value="Aetherion v0.1.0" />
-          <InfoLine label="Build" value="2026.04.19" />
+          <InfoLine label="Launcher" value="Aetherion v0.2.4" />
+          <InfoLine label="Build" value="2026.04.20" />
           <InfoLine label="Electron" value="Real" />
           <InfoLine label="Node" value="Runtime local" />
         </div>

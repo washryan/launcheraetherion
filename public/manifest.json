@@ -4,7 +4,7 @@
   "minecraft": "1.19.2",
   "name": "Aetherion Main",
   "instanceId": "aetherion-main",
-  "publishedAt": "2026-04-20T01:04:25.839Z",
+  "publishedAt": "2026-04-20T16:07:50.525Z",
   "changelog": "- Launcher Electron inicia Minecraft/Forge 1.19.2\n- Forge, libraries, assets e mods sao preparados automaticamente\n- JEI e OptiFine ficam como opcionais selecionaveis\n- Configuracoes de Java, Minecraft, armazenamento, logs, cache e integridade persistentes",
   "requiredLauncherVersion": "0.2.0",
   "forge": {

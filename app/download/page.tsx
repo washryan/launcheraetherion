@@ -13,7 +13,7 @@ import { AetherionMark } from "@/components/launcher/aetherion-mark"
 import { MOCK_MANIFEST } from "@/lib/launcher/mock-data"
 import { launcherDownloadUrl, releasePageUrl } from "@/lib/launcher/github-releases"
 
-const LAUNCHER_VERSION = "0.2.3"
+const LAUNCHER_VERSION = "0.2.4"
 const WINDOWS_INSTALLER_FILENAME = `Aetherion.Launcher.Setup.${LAUNCHER_VERSION}.exe`
 const LAUNCHER_REPO = {
   owner: "washryan",
