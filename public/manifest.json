@@ -4,7 +4,7 @@
   "minecraft": "1.19.2",
   "name": "Aetherion Main",
   "instanceId": "aetherion-main",
-  "publishedAt": "2026-04-19T23:38:17.880Z",
+  "publishedAt": "2026-04-20T00:06:27.429Z",
   "changelog": "- Launcher Electron inicia Minecraft/Forge 1.19.2\n- Forge, libraries, assets e mods sao preparados automaticamente\n- JEI e OptiFine ficam como opcionais selecionaveis\n- Configuracoes de Java, Minecraft, armazenamento, logs, cache e integridade persistentes",
   "requiredLauncherVersion": "0.2.0",
   "forge": {
@@ -76,13 +76,13 @@
       "tag": "Obrigatorio"
     },
     {
-      "path": "mods/AlltheCompatibility-1.19.2-(v.2.1.1b).jar",
-      "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.3/AlltheCompatibility-1.19.2-(v.2.1.1b).jar",
+      "path": "mods/AlltheCompatibility-1.19.2-.v.2.1.1b.jar",
+      "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.3/AlltheCompatibility-1.19.2-.v.2.1.1b.jar",
       "sha256": "07314883044b8af51ae4bf33d9e54097917bce54a4100cb2d258f01fb5d2abe3",
       "size": 623950,
       "type": "required",
       "id": "allthecompatibility-1-19-2-v-2-1-1b",
-      "name": "AlltheCompatibility-1.19.2-(v.2.1.1b)",
+      "name": "AlltheCompatibility-1.19.2-.v.2.1.1b",
       "tag": "Obrigatorio"
     },
     {

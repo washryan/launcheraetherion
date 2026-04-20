@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, exemplo: v0.2.0"
+        description: "Release tag, exemplo: v0.2.1"
         required: true
-        default: "v0.2.0"
+        default: "v0.2.1"
 
 permissions:
   contents: write
@@ -46,6 +46,6 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: Aetherion Launcher ${{ env.RELEASE_TAG }}
           files: |
-            dist/Aetherion.Launcher.Setup.0.2.0.exe
-            dist/Aetherion.Launcher.Setup.0.2.0.exe.blockmap
+            dist/Aetherion.Launcher.Setup.*.exe
+            dist/Aetherion.Launcher.Setup.*.exe.blockmap
           fail_on_unmatched_files: true

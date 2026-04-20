@@ -76,13 +76,13 @@
       "tag": "Obrigatorio"
     },
     {
-      "path": "mods/AlltheCompatibility-1.19.2-(v.2.1.1b).jar",
-      "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.3/AlltheCompatibility-1.19.2-(v.2.1.1b).jar",
+      "path": "mods/AlltheCompatibility-1.19.2-.v.2.1.1b.jar",
+      "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.3/AlltheCompatibility-1.19.2-.v.2.1.1b.jar",
       "sha256": "0707070707070707070707070707070707070707070707070707070707070707",
       "size": 0,
       "type": "required",
       "id": "allthecompatibility-1-19-2-v-2-1-1b",
-      "name": "AlltheCompatibility-1.19.2-(v.2.1.1b)",
+      "name": "AlltheCompatibility-1.19.2-.v.2.1.1b",
       "tag": "Obrigatorio"
     },
     {

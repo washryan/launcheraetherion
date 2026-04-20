@@ -47,8 +47,7 @@ O script calcula:
 - `size` real.
 - URL de download para cada asset do GitHub Release `v0.3`.
 - `defaultEnabled: true` para JEI.
-- OptiFine fica bloqueado por enquanto, porque crasha junto com Aether em
-  `aether.mixins.json:client.optifine.BossHealthOverlayMixin`.
+- OptiFine fica como opcional desligado por padrao.
 
 Se algum dos 45 obrigatorios estiver faltando, ele avisa. Para transformar aviso
 em erro, rode com `--strict`:
@@ -112,13 +111,25 @@ Depois do deploy, a URL final sera:
 https://SEU-PROJETO.vercel.app/manifest.json
 ```
 
-No launcher, va em Configuracoes > Launcher > Manifest do modpack e cole essa
-URL se quiser forcar um manifest remoto diferente do embutido. Em
-desenvolvimento tambem funciona por variavel de ambiente:
+No build empacotado, o launcher busca por padrao:
+
+```text
+https://raw.githubusercontent.com/washryan/launcheraetherion/main/public/manifest.json
+```
+
+No launcher, va em Configuracoes > Launcher > Manifest do modpack e cole outra
+URL somente se quiser forcar um manifest remoto diferente. Em desenvolvimento
+tambem funciona por variavel de ambiente:
 
 ```powershell
 $env:AETHERION_MANIFEST_URL="https://SEU-PROJETO.vercel.app/manifest.json"
 pnpm dev:electron
+```
+
+Antes de distribuir, valide se todas as URLs do manifest respondem:
+
+```powershell
+pnpm manifest:check-urls
 ```
 
 ## 6. Como o updater aplica a atualizacao

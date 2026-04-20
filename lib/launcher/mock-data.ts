@@ -91,7 +91,7 @@ const REQUIRED_MOD_FILENAMES = [
   "AI-Improvements-1.19.2-0.5.2.jar",
   "alexsdelight-1.4.1.jar",
   "alexsmobs-1.21.1.jar",
-  "AlltheCompatibility-1.19.2-(v.2.1.1b).jar",
+  "AlltheCompatibility-1.19.2-.v.2.1.1b.jar",
   "allthemodium-2.1.8-1.19.2-43.1.1.jar",
   "alltheores-2.0.2-1.19.2-43.1.3.jar",
   "Apotheosis-1.19.2-6.5.2.jar",

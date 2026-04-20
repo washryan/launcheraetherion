@@ -10,10 +10,12 @@ const path = require("node:path")
 const isDev = !app.isPackaged
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,16}$/
 const LAUNCHER_NAME = "AetherionLauncher"
-const LAUNCHER_VERSION = "0.2.0"
+const LAUNCHER_VERSION = "0.2.1"
 const MOJANG_VERSION_MANIFEST =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 const MINECRAFT_RESOURCES_BASE = "https://resources.download.minecraft.net"
+const DEFAULT_REMOTE_MANIFEST_URL =
+  "https://raw.githubusercontent.com/washryan/launcheraetherion/main/public/manifest.json"
 const APP_PROTOCOL = "aetherion"
 const LAUNCH_TARGET = {
   minecraft: "1.19.2",
@@ -21,7 +23,7 @@ const LAUNCH_TARGET = {
 }
 const FORGE_INSTALLER_FILENAME = `forge-${LAUNCH_TARGET.minecraft}-${LAUNCH_TARGET.forge}-installer.jar`
 const DEFAULT_MANIFEST = {
-  version: "0.2.0-dev",
+  version: "0.2.1-dev",
   minecraft: LAUNCH_TARGET.minecraft,
   name: "Aetherion Main",
   instanceId: "aetherion-main",
@@ -1608,10 +1610,10 @@ async function ensureLauncherProfile(root) {
 }
 
 async function loadManifest(settings, signal) {
-  const url =
-    typeof settings?.launcher?.manifestUrl === "string" && settings.launcher.manifestUrl.trim()
-      ? settings.launcher.manifestUrl.trim()
-      : process.env.AETHERION_MANIFEST_URL
+  const configuredUrl =
+    typeof settings?.launcher?.manifestUrl === "string" ? settings.launcher.manifestUrl.trim() : ""
+  const defaultUrl = process.env.AETHERION_MANIFEST_URL || (isDev ? "" : DEFAULT_REMOTE_MANIFEST_URL)
+  const url = configuredUrl || defaultUrl
   if (!url) {
     const localManifestPath = process.env.AETHERION_LOCAL_MANIFEST || path.resolve(process.cwd(), "manifest.json")
     if (isDev && fsSync.existsSync(localManifestPath)) {

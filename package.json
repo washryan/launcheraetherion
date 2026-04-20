@@ -1,6 +1,6 @@
 {
   "name": "aetherion-launcher",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Aetherion Minecraft launcher",
   "private": true,
   "productName": "Aetherion Launcher",
@@ -14,6 +14,7 @@
     "manifest:build": "node scripts/build-manifest.mjs --version 0.3 --mc 1.19.2 --forge 43.5.0 --in ./pack-v0.3 --out ./manifest.json --owner washryan --repo launcheraetherion",
     "manifest:publish": "node scripts/build-manifest.mjs --strict --version 0.3 --mc 1.19.2 --forge 43.5.0 --in ./pack-v0.3 --out ./public/manifest.json --owner washryan --repo launcheraetherion",
     "manifest:example": "node scripts/build-manifest.mjs --template --out ./public/manifest.example.json --owner washryan --repo launcheraetherion",
+    "manifest:check-urls": "node scripts/check-manifest-urls.mjs ./public/manifest.json",
     "build:win": "pnpm manifest:publish && pnpm build && electron-builder --win nsis --x64 --publish never",
     "build:win:ci": "pnpm build && electron-builder --win nsis --x64 --publish never",
     "release:win": "pnpm build:win && powershell -ExecutionPolicy Bypass -File scripts/publish-windows-release.ps1",
