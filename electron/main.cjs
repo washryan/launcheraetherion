@@ -6,11 +6,12 @@ const fs = require("node:fs/promises")
 const { once } = require("node:events")
 const os = require("node:os")
 const path = require("node:path")
+const zlib = require("node:zlib")
 
 const isDev = !app.isPackaged
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,16}$/
 const LAUNCHER_NAME = "AetherionLauncher"
-const LAUNCHER_VERSION = "0.2.2"
+const LAUNCHER_VERSION = "0.2.3"
 const MOJANG_VERSION_MANIFEST =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 const MINECRAFT_RESOURCES_BASE = "https://resources.download.minecraft.net"
@@ -24,7 +25,7 @@ const LAUNCH_TARGET = {
 }
 const FORGE_INSTALLER_FILENAME = `forge-${LAUNCH_TARGET.minecraft}-${LAUNCH_TARGET.forge}-installer.jar`
 const DEFAULT_MANIFEST = {
-  version: "0.2.2-dev",
+  version: "0.2.3-dev",
   minecraft: LAUNCH_TARGET.minecraft,
   name: "Aetherion Main",
   instanceId: "aetherion-main",
@@ -1265,24 +1266,103 @@ async function ensureNativesExtracted(launchPlan, signal) {
   await fs.rm(launchPlan.nativesDirectory, { recursive: true, force: true })
   await fs.mkdir(launchPlan.nativesDirectory, { recursive: true })
 
-  const jar = jarExecutableFor(launchPlan.javaPath)
   for (const artifact of launchPlan.nativeArtifacts) {
-    await runProcess(
-      jar,
-      ["xf", artifact.path],
-      { cwd: launchPlan.nativesDirectory },
-      signal,
-      undefined,
-    )
+    await extractZipToDirectory(artifact.path, launchPlan.nativesDirectory, artifact.exclude || [], signal)
   }
 
   await fs.writeFile(statePath, expectedState, "utf8")
 }
 
-function jarExecutableFor(javaPath) {
-  const executable = process.platform === "win32" ? "jar.exe" : "jar"
-  const sibling = path.join(path.dirname(javaPath), executable)
-  return fsSync.existsSync(sibling) ? sibling : executable
+async function extractZipToDirectory(zipPath, targetDir, excludes, signal) {
+  throwIfAborted(signal)
+  const buffer = await fs.readFile(zipPath)
+  const entries = readZipCentralDirectory(buffer)
+
+  for (const entry of entries) {
+    throwIfAborted(signal)
+    if (!shouldExtractZipEntry(entry.name, excludes)) continue
+
+    const target = safeResolve(targetDir, entry.name)
+    if (entry.directory) {
+      await fs.mkdir(target, { recursive: true })
+      continue
+    }
+
+    const content = inflateZipEntry(buffer, entry)
+    await fs.mkdir(path.dirname(target), { recursive: true })
+    await fs.writeFile(target, content)
+  }
+}
+
+function readZipCentralDirectory(buffer) {
+  const endOffset = findZipEndOfCentralDirectory(buffer)
+  if (endOffset < 0) throw new Error("Arquivo ZIP invalido: EOCD nao encontrado.")
+
+  const centralSize = buffer.readUInt32LE(endOffset + 12)
+  const centralOffset = buffer.readUInt32LE(endOffset + 16)
+  const entries = []
+  let offset = centralOffset
+  const end = centralOffset + centralSize
+
+  while (offset < end) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) {
+      throw new Error("Arquivo ZIP invalido: central directory corrompido.")
+    }
+
+    const flags = buffer.readUInt16LE(offset + 8)
+    const method = buffer.readUInt16LE(offset + 10)
+    const compressedSize = buffer.readUInt32LE(offset + 20)
+    const filenameLength = buffer.readUInt16LE(offset + 28)
+    const extraLength = buffer.readUInt16LE(offset + 30)
+    const commentLength = buffer.readUInt16LE(offset + 32)
+    const localHeaderOffset = buffer.readUInt32LE(offset + 42)
+    const name = buffer
+      .subarray(offset + 46, offset + 46 + filenameLength)
+      .toString(flags & 0x0800 ? "utf8" : "utf8")
+      .replace(/\\/g, "/")
+
+    entries.push({
+      name,
+      method,
+      compressedSize,
+      localHeaderOffset,
+      directory: name.endsWith("/"),
+    })
+    offset += 46 + filenameLength + extraLength + commentLength
+  }
+
+  return entries
+}
+
+function findZipEndOfCentralDirectory(buffer) {
+  const min = Math.max(0, buffer.length - 0xffff - 22)
+  for (let offset = buffer.length - 22; offset >= min; offset--) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) return offset
+  }
+  return -1
+}
+
+function inflateZipEntry(buffer, entry) {
+  const offset = entry.localHeaderOffset
+  if (buffer.readUInt32LE(offset) !== 0x04034b50) {
+    throw new Error(`Arquivo ZIP invalido: header local ausente em ${entry.name}`)
+  }
+
+  const filenameLength = buffer.readUInt16LE(offset + 26)
+  const extraLength = buffer.readUInt16LE(offset + 28)
+  const dataStart = offset + 30 + filenameLength + extraLength
+  const compressed = buffer.subarray(dataStart, dataStart + entry.compressedSize)
+
+  if (entry.method === 0) return Buffer.from(compressed)
+  if (entry.method === 8) return zlib.inflateRawSync(compressed)
+  throw new Error(`Metodo ZIP nao suportado (${entry.method}) em ${entry.name}`)
+}
+
+function shouldExtractZipEntry(entryName, excludes) {
+  if (!entryName || entryName.includes("\0")) return false
+  if (entryName.startsWith("/") || /^[a-zA-Z]:\//.test(entryName)) return false
+  if (entryName.split("/").some((part) => part === "..")) return false
+  return !(excludes || []).some((pattern) => entryName.startsWith(String(pattern).replace(/\\/g, "/")))
 }
 
 async function getLaunchAccount(accountId) {

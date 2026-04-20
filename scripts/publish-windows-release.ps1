@@ -1,5 +1,5 @@
 param(
-  [string]$Version = "0.2.2",
+  [string]$Version = "0.2.3",
   [string]$Owner = "washryan",
   [string]$Repo = "launcheraetherion",
   [string]$InstallerPath = "",
