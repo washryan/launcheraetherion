@@ -154,7 +154,7 @@ export function LauncherTab() {
 
       <SettingsSection title="Sobre">
         <div className="rounded-lg border border-border/50 bg-card/40 p-5 space-y-3">
-          <InfoLine label="Launcher" value="Aetherion v0.2.4" />
+          <InfoLine label="Launcher" value="Aetherion v0.2.5" />
           <InfoLine label="Build" value="2026.04.20" />
           <InfoLine label="Electron" value="Real" />
           <InfoLine label="Node" value="Runtime local" />

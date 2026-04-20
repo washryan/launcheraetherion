@@ -11,7 +11,7 @@ const zlib = require("node:zlib")
 const isDev = !app.isPackaged
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,16}$/
 const LAUNCHER_NAME = "AetherionLauncher"
-const LAUNCHER_VERSION = "0.2.4"
+const LAUNCHER_VERSION = "0.2.5"
 const MOJANG_VERSION_MANIFEST =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 const MINECRAFT_RESOURCES_BASE = "https://resources.download.minecraft.net"
@@ -25,7 +25,7 @@ const LAUNCH_TARGET = {
 }
 const FORGE_INSTALLER_FILENAME = `forge-${LAUNCH_TARGET.minecraft}-${LAUNCH_TARGET.forge}-installer.jar`
 const DEFAULT_MANIFEST = {
-  version: "0.2.4-dev",
+  version: "0.2.5-dev",
   minecraft: LAUNCH_TARGET.minecraft,
   name: "Aetherion Main",
   instanceId: "aetherion-main",
@@ -2455,13 +2455,14 @@ function javaExecutableName() {
 
 async function inspectJava(candidate) {
   try {
-    const probePath = javaProbePath(candidate)
+    const resolvedCandidate = resolveWindowsCommandPath(candidate)
+    const probePath = javaProbePath(resolvedCandidate)
     const output = await captureProcess(probePath, ["-version"], { timeoutMs: 8000 })
     const text = `${output.stdout}\n${output.stderr}`
     const major = parseJavaMajor(text)
     if (!major) return null
     return {
-      path: javaLaunchPath(candidate),
+      path: javaLaunchPath(resolvedCandidate),
       probePath,
       major,
       version: firstLine(text) || `Java ${major}`,
@@ -2469,6 +2470,32 @@ async function inspectJava(candidate) {
   } catch {
     return null
   }
+}
+
+function resolveWindowsCommandPath(candidate) {
+  if (process.platform !== "win32") return candidate
+  const command = String(candidate || "")
+  if (!command || path.isAbsolute(command) || command.includes("\\") || command.includes("/")) {
+    return candidate
+  }
+
+  const pathEntries = String(process.env.PATH || "")
+    .split(path.delimiter)
+    .filter(Boolean)
+  const extensions = path.extname(command)
+    ? [""]
+    : String(process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
+        .split(";")
+        .filter(Boolean)
+
+  for (const entry of pathEntries) {
+    for (const extension of extensions) {
+      const full = path.join(entry, `${command}${extension}`)
+      if (fsSync.existsSync(full)) return full
+    }
+  }
+
+  return candidate
 }
 
 function javaProbePath(candidate) {
