@@ -186,16 +186,6 @@
       "tag": "Obrigatorio"
     },
     {
-      "path": "mods/aquamirae-6.API15.jar",
-      "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.4/aquamirae-6.API15.jar",
-      "sha256": "0f8908525660c13f4e3bce7fa59fc7dfa5e88153641c796a76cfe551e03492c3",
-      "size": 17322001,
-      "type": "required",
-      "id": "aquamirae-6-api15",
-      "name": "aquamirae-6.API15",
-      "tag": "Obrigatorio"
-    },
-    {
       "path": "mods/architectury-6.6.92-forge.jar",
       "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.4/architectury-6.6.92-forge.jar",
       "sha256": "61c2482c0bfaa8a917f042edd7b8d73107005602115bcdbb4638ec817dd56fa7",
@@ -793,16 +783,6 @@
       "type": "required",
       "id": "mysticalagriculture-1-19-2-6-0-17",
       "name": "MysticalAgriculture-1.19.2-6.0.17",
-      "tag": "Obrigatorio"
-    },
-    {
-      "path": "mods/obscure_api-15.jar",
-      "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.4/obscure_api-15.jar",
-      "sha256": "6fe0f9d361c682ceeab6a4add34842cab5682accf147cd7ced79f6bf4dae1799",
-      "size": 964152,
-      "type": "required",
-      "id": "obscure-api-15",
-      "name": "obscure_api-15",
       "tag": "Obrigatorio"
     },
     {
