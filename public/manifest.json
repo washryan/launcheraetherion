@@ -4,7 +4,7 @@
   "minecraft": "1.19.2",
   "name": "Aetherion Main",
   "instanceId": "aetherion-main",
-  "publishedAt": "2026-04-21T14:57:31.014Z",
+  "publishedAt": "2026-04-21T15:44:15.863Z",
   "changelog": "- Modpack v0.4 com novos mods de exploracao, magia, tecnologia e mapa\n- Xaero Minimap e Xaero World Map entram como opcionais selecionaveis\n- Forge, libraries, assets e mods sao preparados automaticamente\n- Configuracoes de Java, Minecraft, armazenamento, logs, cache e integridade persistentes",
   "requiredLauncherVersion": "0.2.0",
   "forge": {
@@ -413,6 +413,16 @@
       "type": "required",
       "id": "bomd-forge-1-19-2-1-0-6",
       "name": "BOMD-Forge-1.19.2-1.0.6",
+      "tag": "Obrigatorio"
+    },
+    {
+      "path": "mods/Botania-1.19.2-440.2-FORGE.jar",
+      "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.4/Botania-1.19.2-440.2-FORGE.jar",
+      "sha256": "1319174ffff5087db8370289a383208c95f1171362dffbb9bdc4ba3b91a9fda8",
+      "size": 11575718,
+      "type": "required",
+      "id": "botania-1-19-2-440-2-forge",
+      "name": "Botania-1.19.2-440.2-FORGE",
       "tag": "Obrigatorio"
     },
     {

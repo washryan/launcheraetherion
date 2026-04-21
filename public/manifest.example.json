@@ -416,6 +416,16 @@
       "tag": "Obrigatorio"
     },
     {
+      "path": "mods/Botania-1.19.2-440.2-FORGE.jar",
+      "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.4/Botania-1.19.2-440.2-FORGE.jar",
+      "sha256": "1319174ffff5087db8370289a383208c95f1171362dffbb9bdc4ba3b91a9fda8",
+      "size": 11575718,
+      "type": "required",
+      "id": "botania-1-19-2-440-2-forge",
+      "name": "Botania-1.19.2-440.2-FORGE",
+      "tag": "Obrigatorio"
+    },
+    {
       "path": "mods/botarium-forge-1.19.2-1.9.2.jar",
       "url": "https://github.com/washryan/launcheraetherion/releases/download/v0.4/botarium-forge-1.19.2-1.9.2.jar",
       "sha256": "218c78c0f20b92017ec9752c4035b490979647dec41fd8afadec7fa19a2cc4c5",
