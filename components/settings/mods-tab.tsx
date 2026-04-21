@@ -64,6 +64,13 @@ export function ModsTab() {
     setOptional((prev) => ({ ...prev, [path]: enabled }))
     try {
       await window.aetherion?.mods?.setOptional(path, enabled)
+      if (enabled && isOptiFinePath(path)) {
+        setStatus(
+          "OptiFine ativado em modo experimental. Se o jogo fechar com erro de mixin/Aether, desligue apenas o OptiFine e deixe os outros opcionais ligados.",
+        )
+        return
+      }
+      setStatus("Mods opcionais atualizados.")
     } catch (err) {
       console.warn("[aetherion] failed to update optional mod", err)
       setOptional((prev) => ({ ...prev, [path]: !enabled }))
@@ -232,6 +239,18 @@ export function ModsTab() {
   )
 }
 
+function isOptiFinePath(filePath: string) {
+  return /optifine/i.test(filePath)
+}
+
+function getModHint(mod: ManifestFile) {
+  if (mod.description) return mod.description
+  if (isOptiFinePath(mod.path)) {
+    return "Experimental: neste pack pode conflitar com Aether. Se travar ao abrir, desligue so o OptiFine."
+  }
+  return null
+}
+
 function ModRow({
   mod,
   locked,
@@ -244,6 +263,7 @@ function ModRow({
   onToggle?: (v: boolean) => void
 }) {
   const displayName = mod.name ?? mod.path.split("/").pop() ?? mod.path
+  const hint = getModHint(mod)
 
   return (
     <div className="flex items-center gap-4 px-4 py-3">
@@ -254,6 +274,7 @@ function ModRow({
         )}
       />
       <div className="flex-1 min-w-0">
+        {hint ? <p className="mb-1 text-[11px] text-amber-300/90">{hint}</p> : null}
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
           {mod.tag && (

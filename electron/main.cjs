@@ -1087,6 +1087,7 @@ async function startMinecraft(launchPlan, signal) {
 async function minecraftExitDiagnostics(root, logPath, code) {
   const crashReport = await newestCrashReport(root)
   const logTail = await readTail(logPath, 18)
+  const crashTail = crashReport ? await readTail(crashReport, 60) : ""
   const hints = []
 
   if (/java version 2[1-9]\./i.test(logTail)) {
@@ -1096,6 +1097,14 @@ async function minecraftExitDiagnostics(root, logPath, code) {
   }
   if (/OptiFineTransformationService|OptiFineTransformer/i.test(logTail)) {
     hints.push("OptiFine estava ativo. Para testar estabilidade, desative OptiFine em Mods opcionais.")
+  }
+  if (
+    /aether\.mixins\.json:client\.optifine|BossHealthOverlayMixin/i.test(logTail) ||
+    /aether\.mixins\.json:client\.optifine|BossHealthOverlayMixin/i.test(crashTail)
+  ) {
+    hints.push(
+      "Conflito detectado entre Aether e OptiFine. Mantenha JEI e Xaero ativos se quiser, mas desative o OptiFine para abrir este modpack.",
+    )
   }
   if (/HTTP\s+404|Not Found em https?:\/\//i.test(logTail)) {
     hints.push("Foi detectado 404 no log; rode Verificar integridade para baixar novamente.")
