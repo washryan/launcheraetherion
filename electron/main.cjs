@@ -11,7 +11,7 @@ const zlib = require("node:zlib")
 const isDev = !app.isPackaged
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,16}$/
 const LAUNCHER_NAME = "AetherionLauncher"
-const LAUNCHER_VERSION = "0.2.5"
+const LAUNCHER_VERSION = "0.3.0"
 const MOJANG_VERSION_MANIFEST =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 const MINECRAFT_RESOURCES_BASE = "https://resources.download.minecraft.net"
@@ -25,7 +25,7 @@ const LAUNCH_TARGET = {
 }
 const FORGE_INSTALLER_FILENAME = `forge-${LAUNCH_TARGET.minecraft}-${LAUNCH_TARGET.forge}-installer.jar`
 const DEFAULT_MANIFEST = {
-  version: "0.2.5-dev",
+  version: "0.4-dev",
   minecraft: LAUNCH_TARGET.minecraft,
   name: "Aetherion Main",
   instanceId: "aetherion-main",

@@ -1,8 +1,8 @@
 param(
-  [string]$Version = "0.3",
+  [string]$Version = "0.4",
   [string]$Owner = "washryan",
   [string]$Repo = "launcheraetherion",
-  [string]$PackPath = "pack-v0.3",
+  [string]$AssetsPath = "release-v0.4-upload\\assets",
   [string]$ReleaseBody = "Aetherion modpack assets used by public/manifest.json."
 )
 
@@ -12,8 +12,8 @@ if (-not $env:GITHUB_TOKEN) {
   throw "Defina GITHUB_TOKEN com permissao de Contents: Read and write antes de publicar."
 }
 
-if (-not (Test-Path $PackPath)) {
-  throw "Pasta do modpack nao encontrada: $PackPath"
+if (-not (Test-Path $AssetsPath)) {
+  throw "Pasta de assets nao encontrada: $AssetsPath"
 }
 
 $tag = "v$Version"
@@ -62,9 +62,9 @@ try {
   }
 }
 
-$files = Get-ChildItem -Path $PackPath -Recurse -File | Sort-Object FullName
+$files = Get-ChildItem -Path $AssetsPath -Recurse -File | Sort-Object FullName
 if (-not $files) {
-  throw "Nenhum arquivo encontrado em $PackPath"
+  throw "Nenhum arquivo encontrado em $AssetsPath"
 }
 
 $names = @{}
